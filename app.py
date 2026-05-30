@@ -4,7 +4,8 @@ Iniciar: python app.py
 Acceder: http://localhost:5000
 """
 import sqlite3, os, json, io, shutil
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from functools import wraps
 from time import time
 from flask import Flask, jsonify, request, render_template, abort, send_file
@@ -15,7 +16,7 @@ DB_TRAINING = os.path.join(APP_DIR, "inventario_training.db")
 
 _training_mode = False
 
-_LIMA = timezone(timedelta(hours=-5))  # America/Lima — sin horario de verano
+_LIMA = ZoneInfo("America/Lima")
 
 def lima_now():
     return datetime.now(_LIMA)
@@ -98,6 +99,8 @@ def migrate_db():
         "ALTER TABLE ventas_grupos ADD COLUMN fecha_salida TEXT DEFAULT ''",
         "ALTER TABLE ventas_grupos ADD COLUMN fecha_entrega TEXT DEFAULT ''",
         "ALTER TABLE ventas_grupos ADD COLUMN comentarios TEXT DEFAULT ''",
+        "ALTER TABLE ventas ADD COLUMN es_training INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE ventas_grupos ADD COLUMN es_training INTEGER NOT NULL DEFAULT 0",
     ]:
         try: conn.execute(sql); conn.commit()
         except Exception: pass
@@ -229,6 +232,7 @@ def migrate_db():
         descuento_motivo TEXT DEFAULT '',
         descuento_monto  REAL NOT NULL DEFAULT 0,
         fecha            TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        es_training      INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY (grupo_id) REFERENCES ventas_grupos(id)
     );
     CREATE TABLE IF NOT EXISTS ventas_grupos (
@@ -240,7 +244,8 @@ def migrate_db():
         descuento_pct    REAL NOT NULL DEFAULT 0,
         descuento_motivo TEXT DEFAULT '',
         descuento_monto  REAL NOT NULL DEFAULT 0,
-        fecha            TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        fecha            TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        es_training      INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS config (
         clave TEXT PRIMARY KEY,
@@ -279,6 +284,8 @@ def _migrate_single_db(db_path):
         "ALTER TABLE ventas_grupos ADD COLUMN fecha_salida TEXT DEFAULT ''",
         "ALTER TABLE ventas_grupos ADD COLUMN fecha_entrega TEXT DEFAULT ''",
         "ALTER TABLE ventas_grupos ADD COLUMN comentarios TEXT DEFAULT ''",
+        "ALTER TABLE ventas ADD COLUMN es_training INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE ventas_grupos ADD COLUMN es_training INTEGER NOT NULL DEFAULT 0",
     ]:
         try: conn.execute(sql); conn.commit()
         except Exception: pass
@@ -297,7 +304,8 @@ def _migrate_single_db(db_path):
         descuento_pct    REAL NOT NULL DEFAULT 0,
         descuento_motivo TEXT DEFAULT '',
         descuento_monto  REAL NOT NULL DEFAULT 0,
-        fecha            TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        fecha            TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        es_training      INTEGER NOT NULL DEFAULT 0
     );
     """)
     conn.commit()
@@ -471,6 +479,17 @@ def training_reset():
     conn.close()
     return jsonify({"ok": True})
 
+@app.route("/api/training/reset_ventas", methods=["POST"])
+def training_reset_ventas():
+    conn = get_db()
+    conn.execute("DELETE FROM ventas WHERE es_training=1")
+    deleted_grupos = conn.execute(
+        "DELETE FROM ventas_grupos WHERE es_training=1"
+    ).rowcount
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "grupos_borrados": deleted_grupos})
+
 # Listar todos los productos con filtros
 @app.route("/api/productos")
 def api_productos():
@@ -543,11 +562,11 @@ def api_venta():
     cur.execute("UPDATE skus SET stock=? WHERE id=?", (nuevo_stock, pid))
     cur.execute("""
         INSERT INTO ventas (producto_id, ean13, nombre, color, talla, precio, cantidad, canal,
-                            descuento_pct, descuento_motivo, descuento_monto, fecha)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            descuento_pct, descuento_motivo, descuento_monto, fecha, es_training)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (pid, prod["codigo_barras"], prod["nombre"], prod["color"], prod["talla"],
           precio_pagado, cant, canal, descuento_pct, descuento_motivo, descuento_monto,
-          lima_now().strftime("%Y-%m-%d %H:%M:%S")))
+          lima_now().strftime("%Y-%m-%d %H:%M:%S"), int(_training_mode)))
 
     conn.commit()
     conn.close()
@@ -1636,10 +1655,11 @@ def api_pv_sellar(pid):
         qty = it["recolectado"]
         if qty <= 0 or not it["producto_id"]: continue
         conn.execute("UPDATE skus SET stock=MAX(0,stock-?) WHERE id=?", (qty, it["producto_id"]))
-        conn.execute("""INSERT INTO ventas (producto_id,ean13,nombre,color,talla,precio,cantidad,canal,fecha)
-            VALUES (?,?,?,?,?,?,?,?,?)""",
+        conn.execute("""INSERT INTO ventas (producto_id,ean13,nombre,color,talla,precio,cantidad,canal,fecha,es_training)
+            VALUES (?,?,?,?,?,?,?,?,?,?)""",
             (it["producto_id"], it["ean13"], it["nombre"], it["color"],
-             it["talla"], it["precio"], qty, pedido["canal"], lima_now().strftime("%Y-%m-%d %H:%M:%S")))
+             it["talla"], it["precio"], qty, pedido["canal"],
+             lima_now().strftime("%Y-%m-%d %H:%M:%S"), int(_training_mode)))
     conn.execute("UPDATE pedidos_venta SET estado='SELLADO' WHERE id=?", (pid,))
     conn.commit(); conn.close()
     return jsonify({"ok": True})
@@ -2055,12 +2075,12 @@ def api_venta_manual():
 
     cur.execute("""INSERT INTO ventas_grupos
                    (nombre_cliente,telefono,canal,total,descuento_pct,descuento_motivo,descuento_monto,
-                    tipo_pago,fecha_pedido,fecha_salida,fecha_entrega,comentarios,fecha)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    tipo_pago,fecha_pedido,fecha_salida,fecha_entrega,comentarios,fecha,es_training)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (nombre_cliente, telefono, canal, total_pagado,
                  descuento_pct, descuento_motivo, descuento_monto,
                  tipo_pago, fecha_pedido, fecha_salida, fecha_entrega, comentarios,
-                 lima_now().strftime("%Y-%m-%d %H:%M:%S")))
+                 lima_now().strftime("%Y-%m-%d %H:%M:%S"), int(_training_mode)))
     grupo_id = cur.lastrowid
 
     for item in items:
@@ -2086,12 +2106,12 @@ def api_venta_manual():
         cur.execute("UPDATE skus SET stock=MAX(0,stock-?) WHERE id=?", (cant, pid))
         cur.execute("""INSERT INTO ventas
                        (producto_id,ean13,nombre,color,talla,precio,cantidad,canal,
-                        grupo_id,descuento_pct,descuento_motivo,descuento_monto,fecha)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        grupo_id,descuento_pct,descuento_motivo,descuento_monto,fecha,es_training)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (pid, prod["codigo_barras"], prod["nombre"], prod["color"], prod["talla"],
                      precio_pagado, cant, canal,
                      grupo_id, descuento_pct, descuento_motivo, desc_monto_item,
-                     lima_now().strftime("%Y-%m-%d %H:%M:%S")))
+                     lima_now().strftime("%Y-%m-%d %H:%M:%S"), int(_training_mode)))
 
     conn.commit()
     conn.close()

@@ -508,6 +508,7 @@ tr:hover td{background:var(--card)}
   <div class="toolbar">
     <input class="search-input" type="date" id="ventaDesde" onchange="loadVentas()" style="max-width:180px"/>
     <button class="btn btn-primary" onclick="abrirVentaManual()" style="font-size:.82rem;padding:.45rem .9rem">+ Venta Manual</button>
+    <button class="btn btn-outline btn-sm training-only" onclick="resetHistorialTraining()">🗑 Resetear historial de entrenamiento</button>
     <span id="ventasResumen" style="color:var(--gray);font-size:.85rem;margin-left:auto"></span>
   </div>
   <div id="ventasDescuentoBanner" class="vg-desc-banner" style="display:none"></div>
@@ -2970,6 +2971,14 @@ async function resetTraining(){
   await api('/api/training/reset','POST');
   toast('✓ Pedidos de entrenamiento eliminados');
   loadPedidos();
+}
+
+async function resetHistorialTraining(){
+  if(!confirm('¿Borrar todas las ventas de entrenamiento? Esta acción no se puede deshacer.')) return;
+  const res = await api('/api/training/reset_ventas','POST');
+  if(res.error){ toast('Error: '+res.error,'error'); return; }
+  toast('✓ Historial de ventas de entrenamiento eliminado');
+  loadVentas();
 }
 
 async function cancelarPedido(id){
