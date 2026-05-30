@@ -88,6 +88,11 @@ def migrate_db():
         "ALTER TABLE ventas ADD COLUMN descuento_motivo TEXT DEFAULT ''",
         "ALTER TABLE ventas ADD COLUMN descuento_monto REAL DEFAULT 0",
         "ALTER TABLE skus ADD COLUMN costo REAL NOT NULL DEFAULT 0",
+        "ALTER TABLE ventas_grupos ADD COLUMN tipo_pago TEXT DEFAULT ''",
+        "ALTER TABLE ventas_grupos ADD COLUMN fecha_pedido TEXT DEFAULT ''",
+        "ALTER TABLE ventas_grupos ADD COLUMN fecha_salida TEXT DEFAULT ''",
+        "ALTER TABLE ventas_grupos ADD COLUMN fecha_entrega TEXT DEFAULT ''",
+        "ALTER TABLE ventas_grupos ADD COLUMN comentarios TEXT DEFAULT ''",
     ]:
         try: conn.execute(sql); conn.commit()
         except Exception: pass
@@ -1965,6 +1970,11 @@ def api_venta_manual():
     canal            = str(data.get("canal") or "DIRECTO").strip()
     descuento_pct    = float(data.get("descuento_pct") or 0)
     descuento_motivo = str(data.get("descuento_motivo") or "").strip()
+    tipo_pago        = str(data.get("tipo_pago") or "").strip()
+    fecha_pedido     = str(data.get("fecha_pedido") or "").strip()
+    fecha_salida     = str(data.get("fecha_salida") or "").strip()
+    fecha_entrega    = str(data.get("fecha_entrega") or "").strip()
+    comentarios      = str(data.get("comentarios") or "").strip()
     items            = data.get("items", [])
 
     if not items:
@@ -1980,10 +1990,12 @@ def api_venta_manual():
     total_pagado    = subtotal_orig - descuento_monto
 
     cur.execute("""INSERT INTO ventas_grupos
-                   (nombre_cliente,telefono,canal,total,descuento_pct,descuento_motivo,descuento_monto)
-                   VALUES (?,?,?,?,?,?,?)""",
+                   (nombre_cliente,telefono,canal,total,descuento_pct,descuento_motivo,descuento_monto,
+                    tipo_pago,fecha_pedido,fecha_salida,fecha_entrega,comentarios)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (nombre_cliente, telefono, canal, total_pagado,
-                 descuento_pct, descuento_motivo, descuento_monto))
+                 descuento_pct, descuento_motivo, descuento_monto,
+                 tipo_pago, fecha_pedido, fecha_salida, fecha_entrega, comentarios))
     grupo_id = cur.lastrowid
 
     for item in items:
