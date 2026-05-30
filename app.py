@@ -209,6 +209,23 @@ def migrate_db():
         fecha       TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (pedido_id) REFERENCES pedidos_venta(id)
     );
+    CREATE TABLE IF NOT EXISTS ventas (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        producto_id      INTEGER,
+        ean13            TEXT NOT NULL DEFAULT '',
+        nombre           TEXT NOT NULL DEFAULT '',
+        color            TEXT NOT NULL DEFAULT '',
+        talla            TEXT NOT NULL DEFAULT '',
+        precio           REAL NOT NULL DEFAULT 0,
+        cantidad         INTEGER NOT NULL DEFAULT 1,
+        canal            TEXT NOT NULL DEFAULT 'DIRECTO',
+        grupo_id         INTEGER DEFAULT NULL,
+        descuento_pct    REAL NOT NULL DEFAULT 0,
+        descuento_motivo TEXT DEFAULT '',
+        descuento_monto  REAL NOT NULL DEFAULT 0,
+        fecha            TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (grupo_id) REFERENCES ventas_grupos(id)
+    );
     CREATE TABLE IF NOT EXISTS ventas_grupos (
         id               INTEGER PRIMARY KEY AUTOINCREMENT,
         nombre_cliente   TEXT NOT NULL DEFAULT 'DIRECTO',
@@ -238,6 +255,46 @@ def migrate_db():
         try: conn.execute("INSERT OR IGNORE INTO config (clave,valor) VALUES (?,?)",(k,v)); conn.commit()
         except: pass
     _generar_variantes(conn)
+    conn.commit()
+    conn.close()
+    # Apply same schema migrations to training DB if it exists
+    if os.path.exists(DB_TRAINING):
+        _migrate_single_db(DB_TRAINING)
+
+def _migrate_single_db(db_path):
+    conn = sqlite3.connect(db_path)
+    for sql in [
+        "ALTER TABLE ventas ADD COLUMN canal TEXT DEFAULT 'DIRECTO'",
+        "ALTER TABLE ventas ADD COLUMN grupo_id INTEGER DEFAULT NULL",
+        "ALTER TABLE ventas ADD COLUMN descuento_pct REAL DEFAULT 0",
+        "ALTER TABLE ventas ADD COLUMN descuento_motivo TEXT DEFAULT ''",
+        "ALTER TABLE ventas ADD COLUMN descuento_monto REAL DEFAULT 0",
+        "ALTER TABLE ventas_grupos ADD COLUMN tipo_pago TEXT DEFAULT ''",
+        "ALTER TABLE ventas_grupos ADD COLUMN fecha_pedido TEXT DEFAULT ''",
+        "ALTER TABLE ventas_grupos ADD COLUMN fecha_salida TEXT DEFAULT ''",
+        "ALTER TABLE ventas_grupos ADD COLUMN fecha_entrega TEXT DEFAULT ''",
+        "ALTER TABLE ventas_grupos ADD COLUMN comentarios TEXT DEFAULT ''",
+    ]:
+        try: conn.execute(sql); conn.commit()
+        except Exception: pass
+    conn.executescript("""
+    CREATE TABLE IF NOT EXISTS ventas (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        producto_id      INTEGER,
+        ean13            TEXT NOT NULL DEFAULT '',
+        nombre           TEXT NOT NULL DEFAULT '',
+        color            TEXT NOT NULL DEFAULT '',
+        talla            TEXT NOT NULL DEFAULT '',
+        precio           REAL NOT NULL DEFAULT 0,
+        cantidad         INTEGER NOT NULL DEFAULT 1,
+        canal            TEXT NOT NULL DEFAULT 'DIRECTO',
+        grupo_id         INTEGER DEFAULT NULL,
+        descuento_pct    REAL NOT NULL DEFAULT 0,
+        descuento_motivo TEXT DEFAULT '',
+        descuento_monto  REAL NOT NULL DEFAULT 0,
+        fecha            TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
     conn.commit()
     conn.close()
 
