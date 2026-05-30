@@ -1113,6 +1113,69 @@ tr:hover td{background:var(--card)}
   </div>
 </div>
 
+<!-- ══ MODAL DATOS CLIENTE TICKET ══ -->
+<div class="modal-overlay" id="modalDatosCliente">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <div class="modal-title">DATOS DEL CLIENTE</div>
+      <button class="modal-close" onclick="closeModal('modalDatosCliente')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Nombre cliente <span style="color:var(--gray);font-weight:400">(opcional)</span></label>
+        <input type="text" id="dcNombre" placeholder="Ej: Juan Pérez / DIRECTO"/>
+      </div>
+      <div class="form-group">
+        <label>Teléfono <span style="color:var(--gray);font-weight:400">(opcional)</span></label>
+        <input type="text" id="dcTelefono" placeholder="999 000 000"/>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
+        <div class="form-group" style="margin-bottom:0">
+          <label>Canal de venta</label>
+          <select id="dcCanal">
+            <option value="DIRECTO">Presencial</option>
+            <option value="WhatsApp">WhatsApp</option>
+            <option value="Instagram">Instagram</option>
+            <option value="TikTok">TikTok</option>
+            <option value="Facebook">Facebook</option>
+            <option value="Ripley">Ripley</option>
+            <option value="Falabella">Falabella</option>
+            <option value="Juntoz">Juntoz</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label>Método de pago</label>
+          <select id="dcPago">
+            <option value="Efectivo">Efectivo</option>
+            <option value="Yape">Yape</option>
+            <option value="Plin">Plin</option>
+            <option value="Tarjeta">Tarjeta</option>
+            <option value="Pago Marketplace">Pago Marketplace</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.75rem;margin-top:.75rem">
+        <div class="form-group" style="margin-bottom:0">
+          <label>Fecha pedido</label>
+          <input type="date" id="dcFechaPedido" readonly style="background:var(--card);cursor:default"/>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label>Fecha salida</label>
+          <input type="date" id="dcFechaSalida"/>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label>Fecha entrega</label>
+          <input type="date" id="dcFechaEntrega"/>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modalDatosCliente')">Cancelar</button>
+      <button class="btn btn-primary" onclick="submitTicket()">✓ Confirmar Venta</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ MODAL VENTA MANUAL ══ -->
 <div class="modal-overlay" id="modalVentaManual">
   <div class="modal" style="max-width:520px">
@@ -2038,14 +2101,37 @@ function cancelarTicket(){
   currentProduct = null; currentTalla = null; scanCount = 0;
 }
 
-async function confirmarTicket(){
+function confirmarTicket(){
   if(!ticket.length){ toast('Ticket vacío','error'); return; }
-  const canal      = $('ticketCanal')?.value || 'DIRECTO';
-  const isTraining = document.body.classList.contains('training-mode');
+  const canal  = $('ticketCanal')?.value || 'DIRECTO';
+  const hoy    = new Date().toISOString().split('T')[0];
+  const manana = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+  $('dcCanal').value        = canal;
+  $('dcNombre').value       = '';
+  $('dcTelefono').value     = '';
+  $('dcFechaPedido').value  = hoy;
+  $('dcFechaSalida').value  = manana;
+  $('dcFechaEntrega').value = manana;
+  openModal('modalDatosCliente');
+}
+
+async function submitTicket(){
+  const isTraining     = document.body.classList.contains('training-mode');
+  const nombre_cliente = $('dcNombre').value.trim() || 'DIRECTO';
+  const telefono       = $('dcTelefono').value.trim();
+  const canal          = $('dcCanal').value || 'DIRECTO';
+  const tipo_pago      = $('dcPago').value || 'Efectivo';
+  const fecha_pedido   = $('dcFechaPedido').value;
+  const fecha_salida   = $('dcFechaSalida').value;
+  const fecha_entrega  = $('dcFechaEntrega').value;
   const res = await api('/api/venta_manual','POST',{
-    nombre_cliente:   'DIRECTO',
-    telefono:         '',
-    canal:            canal,
+    nombre_cliente,
+    telefono,
+    canal,
+    tipo_pago,
+    fecha_pedido,
+    fecha_salida,
+    fecha_entrega,
     descuento_pct:    0,
     descuento_motivo: '',
     training:         isTraining,
@@ -2053,10 +2139,11 @@ async function confirmarTicket(){
       producto_id:     i.producto_id,
       talla:           i.talla,
       cantidad:        i.cantidad,
-      precio_original: i.precio_final
+      precio_original: i.precio_original
     }))
   });
   if(res.error){ toast(res.error,'error'); return; }
+  closeModal('modalDatosCliente');
   const total = ticket.reduce((s,i)=>s+i.precio_final*i.cantidad, 0);
   const cnt   = ticket.reduce((s,i)=>s+i.cantidad, 0);
   const msg   = isTraining
