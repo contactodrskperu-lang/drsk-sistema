@@ -447,7 +447,9 @@ def api_scan(ean13):
 @app.route("/api/venta", methods=["POST"])
 @rate_limit(calls=120, period=60)
 def api_venta():
-    data             = request.get_json()
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"error": "JSON inválido o Content-Type incorrecto"}), 400
     pid              = data.get("producto_id")
     cant             = int(data.get("cantidad", 1))
     canal            = str(data.get("canal", "DIRECTO")).strip()
@@ -1955,7 +1957,9 @@ def api_ventas_grupos():
 @app.route("/api/venta_manual", methods=["POST"])
 @rate_limit(calls=60, period=60)
 def api_venta_manual():
-    data             = request.get_json()
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"error": "JSON inválido o Content-Type incorrecto"}), 400
     nombre_cliente   = (data.get("nombre_cliente") or "DIRECTO").strip()
     telefono         = str(data.get("telefono") or "").strip()
     canal            = str(data.get("canal") or "DIRECTO").strip()

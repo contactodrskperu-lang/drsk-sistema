@@ -1168,6 +1168,11 @@ tr:hover td{background:var(--card)}
           <input type="date" id="dcFechaEntrega"/>
         </div>
       </div>
+      <div class="form-group" style="margin-top:.75rem;margin-bottom:0">
+        <label>Comentarios / Observaciones <span style="color:var(--gray);font-weight:400">(opcional)</span></label>
+        <textarea id="dcComentarios" rows="2" placeholder="Ej: Enviar a provincia, cliente recurrente…"
+                  style="width:100%;resize:vertical;font-family:inherit;font-size:.85rem;padding:.45rem .6rem;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text)"></textarea>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal('modalDatosCliente')">Cancelar</button>
@@ -1701,8 +1706,16 @@ document.addEventListener('keydown', e=>{ if(e.key==='Escape') document.querySel
 async function api(url, method='GET', body=null){
   const opts = { method, headers:{'Content-Type':'application/json'} };
   if(body) opts.body = JSON.stringify(body);
-  const res = await fetch(url, opts);
-  return res.json();
+  try {
+    const res = await fetch(url, opts);
+    const ct  = res.headers.get('content-type') || '';
+    if(!ct.includes('application/json')){
+      return { error: `Error del servidor (${res.status})` };
+    }
+    return await res.json();
+  } catch(e) {
+    return { error: 'Error de conexión: ' + e.message };
+  }
 }
 
 /* ── AUTOCOMPLETE ── */
@@ -2112,47 +2125,62 @@ function confirmarTicket(){
   $('dcFechaPedido').value  = hoy;
   $('dcFechaSalida').value  = manana;
   $('dcFechaEntrega').value = manana;
+  $('dcComentarios').value  = '';
   openModal('modalDatosCliente');
 }
 
 async function submitTicket(){
-  const isTraining     = document.body.classList.contains('training-mode');
-  const nombre_cliente = $('dcNombre').value.trim() || 'DIRECTO';
-  const telefono       = $('dcTelefono').value.trim();
-  const canal          = $('dcCanal').value || 'DIRECTO';
-  const tipo_pago      = $('dcPago').value || 'Efectivo';
-  const fecha_pedido   = $('dcFechaPedido').value;
-  const fecha_salida   = $('dcFechaSalida').value;
-  const fecha_entrega  = $('dcFechaEntrega').value;
-  const res = await api('/api/venta_manual','POST',{
-    nombre_cliente,
-    telefono,
-    canal,
-    tipo_pago,
-    fecha_pedido,
-    fecha_salida,
-    fecha_entrega,
-    descuento_pct:    0,
-    descuento_motivo: '',
-    training:         isTraining,
-    items: ticket.map(i=>({
-      producto_id:     i.producto_id,
-      talla:           i.talla,
-      cantidad:        i.cantidad,
-      precio_original: i.precio_original
-    }))
-  });
-  if(res.error){ toast(res.error,'error'); return; }
-  closeModal('modalDatosCliente');
-  const total = ticket.reduce((s,i)=>s+i.precio_final*i.cantidad, 0);
-  const cnt   = ticket.reduce((s,i)=>s+i.cantidad, 0);
-  const msg   = isTraining
-    ? `⚡ [ENTRENAMIENTO] ${cnt} artículo${cnt>1?'s':''} · S/ ${total.toFixed(0)}`
-    : `✓ Venta confirmada — ${cnt} artículo${cnt>1?'s':''} · S/ ${total.toFixed(0)}`;
-  toast(msg);
-  ticket = [];
-  renderTicket();
-  $('scanInput').focus();
+  try {
+    const isTraining     = document.body.classList.contains('training-mode');
+    const nombre_cliente = $('dcNombre').value.trim() || 'DIRECTO';
+    const telefono       = $('dcTelefono').value.trim();
+    const canal          = $('dcCanal').value || 'DIRECTO';
+    const tipo_pago      = $('dcPago').value || 'Efectivo';
+    const fecha_pedido   = $('dcFechaPedido').value;
+    const fecha_salida   = $('dcFechaSalida').value;
+    const fecha_entrega  = $('dcFechaEntrega').value;
+    const comentarios    = $('dcComentarios').value.trim();
+
+    // Asegurar precio_final calculado para cada item
+    ticket.forEach(i => {
+      if(i.precio_final == null) i.precio_final = precioConCanal(i.precio_original);
+    });
+
+    const res = await api('/api/venta_manual','POST',{
+      nombre_cliente,
+      telefono,
+      canal,
+      tipo_pago,
+      fecha_pedido,
+      fecha_salida,
+      fecha_entrega,
+      comentarios,
+      descuento_pct:    0,
+      descuento_motivo: '',
+      training:         isTraining,
+      items: ticket.map(i=>({
+        producto_id:     i.producto_id,
+        talla:           i.talla,
+        cantidad:        i.cantidad,
+        precio_original: i.precio_original
+      }))
+    });
+
+    if(!res || res.error){ toast(res?.error || 'Error al registrar la venta','error'); return; }
+
+    closeModal('modalDatosCliente');
+    const total = ticket.reduce((s,i)=>s + (i.precio_final||i.precio_original) * i.cantidad, 0);
+    const cnt   = ticket.reduce((s,i)=>s + i.cantidad, 0);
+    const msg   = isTraining
+      ? `⚡ [ENTRENAMIENTO] ${cnt} artículo${cnt>1?'s':''} · S/ ${total.toFixed(0)}`
+      : `✓ Venta confirmada — ${cnt} artículo${cnt>1?'s':''} · S/ ${total.toFixed(0)}`;
+    toast(msg);
+    ticket = [];
+    renderTicket();
+    $('scanInput').focus();
+  } catch(e) {
+    toast('Error inesperado: ' + e.message, 'error');
+  }
 }
 
 /* ── COMISIONES ── */
