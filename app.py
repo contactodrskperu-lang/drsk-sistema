@@ -4,7 +4,7 @@ Iniciar: python app.py
 Acceder: http://localhost:5000
 """
 import sqlite3, os, json, io, shutil
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from functools import wraps
 from time import time
 from flask import Flask, jsonify, request, render_template, abort, send_file
@@ -14,6 +14,11 @@ DB_PATH     = os.path.join(APP_DIR, "inventario.db")
 DB_TRAINING = os.path.join(APP_DIR, "inventario_training.db")
 
 _training_mode = False
+
+_LIMA = timezone(timedelta(hours=-5))  # America/Lima — sin horario de verano
+
+def lima_now():
+    return datetime.now(_LIMA)
 
 ESTADOS = [
     "ACTIVO", "BAJO STOCK", "AGOTADO", "EN PEDIDO", "DESCONTINUADO",
@@ -538,10 +543,11 @@ def api_venta():
     cur.execute("UPDATE skus SET stock=? WHERE id=?", (nuevo_stock, pid))
     cur.execute("""
         INSERT INTO ventas (producto_id, ean13, nombre, color, talla, precio, cantidad, canal,
-                            descuento_pct, descuento_motivo, descuento_monto)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            descuento_pct, descuento_motivo, descuento_monto, fecha)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (pid, prod["codigo_barras"], prod["nombre"], prod["color"], prod["talla"],
-          precio_pagado, cant, canal, descuento_pct, descuento_motivo, descuento_monto))
+          precio_pagado, cant, canal, descuento_pct, descuento_motivo, descuento_monto,
+          lima_now().strftime("%Y-%m-%d %H:%M:%S")))
 
     conn.commit()
     conn.close()
@@ -624,7 +630,7 @@ def api_dashboard():
     agotados    = cur.execute("SELECT COUNT(*) FROM skus WHERE stock=0").fetchone()[0]
     bajo_stock  = cur.execute("SELECT COUNT(*) FROM skus WHERE stock BETWEEN 1 AND 2").fetchone()[0]
 
-    hoy = datetime.now().strftime("%Y-%m-%d")
+    hoy = lima_now().strftime("%Y-%m-%d")
     ventas_hoy  = cur.execute(
         "SELECT COUNT(*), COALESCE(SUM(precio*cantidad),0) FROM ventas WHERE fecha LIKE ?", (f"{hoy}%",)
     ).fetchone()
@@ -810,8 +816,8 @@ def api_conteo_guardar():
     diffs = sum(1 for i in items if i["stock_contado"] != i["stock_esperado"])
     conn  = get_db()
     cur   = conn.cursor()
-    cur.execute("INSERT INTO conteos (nota, total_items, total_diferencias) VALUES (?,?,?)",
-                (nota, len(items), diffs))
+    cur.execute("INSERT INTO conteos (nota, total_items, total_diferencias, fecha) VALUES (?,?,?,?)",
+                (nota, len(items), diffs, lima_now().strftime("%Y-%m-%d %H:%M:%S")))
     cid = cur.lastrowid
     for item in items:
         cur.execute("""INSERT INTO conteo_items
@@ -873,9 +879,9 @@ def api_defecto_registrar():
             cur.execute("INSERT INTO ajustes (producto_id,talla,antes,despues,motivo) VALUES (?,?,?,?,?)",
                         (pid, prod["talla"], actual, nuevo, f"Defecto: {desc[:50]}"))
 
-    cur.execute("""INSERT INTO defectos (producto_id,ean13,nombre,color,talla,descripcion,accion,proveedor)
-        VALUES (?,?,?,?,?,?,?,?)""",
-        (pid, ean13_, nombre, color, talla, desc, accion, proveedor))
+    cur.execute("""INSERT INTO defectos (producto_id,ean13,nombre,color,talla,descripcion,accion,proveedor,fecha)
+        VALUES (?,?,?,?,?,?,?,?,?)""",
+        (pid, ean13_, nombre, color, talla, desc, accion, proveedor, lima_now().strftime("%Y-%m-%d %H:%M:%S")))
     defecto_id = cur.lastrowid
     conn.commit()
 
@@ -1028,15 +1034,15 @@ def api_pedido_crear():
     if "es_training" not in cols:
         conn.execute("ALTER TABLE pedidos ADD COLUMN es_training INTEGER DEFAULT 0")
         conn.commit()
-    cur.execute("""INSERT INTO pedidos (categoria,nombre,color,talla,cantidad_pedida,proveedor,fecha_estimada,notas,es_training)
-        VALUES (?,?,?,?,?,?,?,?,?)""",
+    cur.execute("""INSERT INTO pedidos (categoria,nombre,color,talla,cantidad_pedida,proveedor,fecha_estimada,notas,es_training,fecha)
+        VALUES (?,?,?,?,?,?,?,?,?,?)""",
         (str(data.get("categoria","")), nombre,
          str(data.get("color","UNICO")), talla,
          max(1, int(data.get("cantidad_pedida",1))),
          str(data.get("proveedor","")),
          str(data.get("fecha_estimada","")),
          str(data.get("notas","")),
-         is_training))
+         is_training, lima_now().strftime("%Y-%m-%d %H:%M:%S")))
     conn.commit()
     pid = cur.lastrowid
     conn.close()
@@ -1207,7 +1213,7 @@ def api_gasto_crear():
         return jsonify({"error": "Datos inválidos"}), 400
     conn = get_db()
     cur  = conn.cursor()
-    cur.execute("INSERT INTO gastos (mes,canal,monto,nota) VALUES (?,?,?,?)", (mes,canal,monto,nota))
+    cur.execute("INSERT INTO gastos (mes,canal,monto,nota,fecha) VALUES (?,?,?,?,?)", (mes,canal,monto,nota,lima_now().strftime("%Y-%m-%d %H:%M:%S")))
     conn.commit()
     gid = cur.lastrowid
     conn.close()
@@ -1268,8 +1274,8 @@ def api_despacho_crear():
         return jsonify({"error": "Ingresa el nombre del cliente"}), 400
     conn = get_db()
     cur  = conn.cursor()
-    cur.execute("INSERT INTO despachos (nombre_cliente,canal,referencia,notas) VALUES (?,?,?,?)",
-                (nombre, canal, ref, notas))
+    cur.execute("INSERT INTO despachos (nombre_cliente,canal,referencia,notas,fecha) VALUES (?,?,?,?,?)",
+                (nombre, canal, ref, notas, lima_now().strftime("%Y-%m-%d %H:%M:%S")))
     did = cur.lastrowid
     for it in items:
         ean  = str(it.get("ean13","")).strip()
@@ -1383,7 +1389,7 @@ def api_despacho_cancelar(did):
 @app.route("/api/pv")
 def api_pv_list():
     estado = request.args.get("estado", "")
-    fecha  = request.args.get("fecha", datetime.now().strftime("%Y-%m-%d"))
+    fecha  = request.args.get("fecha", lima_now().strftime("%Y-%m-%d"))
     conn   = get_db()
     sql    = "SELECT * FROM pedidos_venta WHERE date(fecha)=?"
     params = [fecha]
@@ -1411,12 +1417,13 @@ def api_pv_crear():
     conn = get_db()
     cur  = conn.cursor()
     cur.execute("""INSERT INTO pedidos_venta
-        (nombre_cliente,telefono,direccion,ciudad,canal,empresa_envio,tipo_pago,indicaciones)
-        VALUES (?,?,?,?,?,?,?,?)""",
+        (nombre_cliente,telefono,direccion,ciudad,canal,empresa_envio,tipo_pago,indicaciones,fecha)
+        VALUES (?,?,?,?,?,?,?,?,?)""",
         (data["nombre_cliente"].strip(), data.get("telefono","").strip(),
          data.get("direccion","").strip(), data.get("ciudad","").strip(),
          data.get("canal","WhatsApp"), data.get("empresa_envio",""),
-         data.get("tipo_pago",""), data.get("indicaciones","").strip()))
+         data.get("tipo_pago",""), data.get("indicaciones","").strip(),
+         lima_now().strftime("%Y-%m-%d %H:%M:%S")))
     pid = cur.lastrowid
     for item in data.get("items", []):
         ean  = item.get("ean13","").strip()
@@ -1493,7 +1500,7 @@ def api_pv_del_item(pid, iid):
 
 @app.route("/api/pv/recoleccion")
 def api_pv_recoleccion():
-    fecha = request.args.get("fecha", datetime.now().strftime("%Y-%m-%d"))
+    fecha = request.args.get("fecha", lima_now().strftime("%Y-%m-%d"))
     conn  = get_db()
     rows  = conn.execute("""
         SELECT i.*, p.nombre_cliente, p.canal, p.empresa_envio
@@ -1508,7 +1515,7 @@ def api_pv_recoleccion():
 @app.route("/api/pv/recoleccion/scan", methods=["POST"])
 def api_pv_recoleccion_scan():
     ean   = (request.json or {}).get("ean13","").strip()
-    fecha = datetime.now().strftime("%Y-%m-%d")
+    fecha = lima_now().strftime("%Y-%m-%d")
     conn  = get_db()
     item  = conn.execute("""
         SELECT i.*, p.nombre_cliente, p.canal
@@ -1540,10 +1547,10 @@ def api_pv_item_incidencia(iid):
     item  = conn.execute("SELECT * FROM pv_items WHERE id=?", (iid,)).fetchone()
     if not item:
         conn.close(); return jsonify({"error": "Item no encontrado"}), 404
-    conn.execute("""INSERT INTO pv_incidencias (pedido_id,item_id,ean13,nombre,motivo,notas)
-        VALUES (?,?,?,?,?,?)""",
+    conn.execute("""INSERT INTO pv_incidencias (pedido_id,item_id,ean13,nombre,motivo,notas,fecha)
+        VALUES (?,?,?,?,?,?,?)""",
         (item["pedido_id"], iid, item["ean13"], item["nombre"],
-         data.get("motivo",""), data.get("notas","")))
+         data.get("motivo",""), data.get("notas",""), lima_now().strftime("%Y-%m-%d %H:%M:%S")))
     conn.execute("UPDATE pv_items SET recolectado=cantidad WHERE id=?", (iid,))
     conn.execute("""UPDATE pedidos_venta SET estado='INCIDENCIA'
         WHERE id=? AND estado NOT IN ('INCIDENCIA','CANCELADO')""", (item["pedido_id"],))
@@ -1552,7 +1559,7 @@ def api_pv_item_incidencia(iid):
 
 @app.route("/api/pv/recoleccion/completar", methods=["POST"])
 def api_pv_recoleccion_completar():
-    fecha = datetime.now().strftime("%Y-%m-%d")
+    fecha = lima_now().strftime("%Y-%m-%d")
     conn  = get_db()
     pend  = conn.execute("""
         SELECT COUNT(*) n FROM pv_items i JOIN pedidos_venta p ON i.pedido_id=p.id
@@ -1578,7 +1585,7 @@ def api_pv_recoleccion_completar():
 @app.route("/api/pv/armado")
 def api_pv_armado_list():
     empresa = request.args.get("empresa","")
-    fecha   = request.args.get("fecha", datetime.now().strftime("%Y-%m-%d"))
+    fecha   = request.args.get("fecha", lima_now().strftime("%Y-%m-%d"))
     conn    = get_db()
     rows    = conn.execute("""
         SELECT * FROM pedidos_venta
@@ -1629,10 +1636,10 @@ def api_pv_sellar(pid):
         qty = it["recolectado"]
         if qty <= 0 or not it["producto_id"]: continue
         conn.execute("UPDATE skus SET stock=MAX(0,stock-?) WHERE id=?", (qty, it["producto_id"]))
-        conn.execute("""INSERT INTO ventas (producto_id,ean13,nombre,color,talla,precio,cantidad,canal)
-            VALUES (?,?,?,?,?,?,?,?)""",
+        conn.execute("""INSERT INTO ventas (producto_id,ean13,nombre,color,talla,precio,cantidad,canal,fecha)
+            VALUES (?,?,?,?,?,?,?,?,?)""",
             (it["producto_id"], it["ean13"], it["nombre"], it["color"],
-             it["talla"], it["precio"], qty, pedido["canal"]))
+             it["talla"], it["precio"], qty, pedido["canal"], lima_now().strftime("%Y-%m-%d %H:%M:%S")))
     conn.execute("UPDATE pedidos_venta SET estado='SELLADO' WHERE id=?", (pid,))
     conn.commit(); conn.close()
     return jsonify({"ok": True})
@@ -1640,7 +1647,7 @@ def api_pv_sellar(pid):
 # ── FASE 4: EXPORTAR ─────────────────────────────────────────────────────
 
 def _pv_pedidos_dia(empresa, conn):
-    fecha = datetime.now().strftime("%Y-%m-%d")
+    fecha = lima_now().strftime("%Y-%m-%d")
     rows  = conn.execute("""
         SELECT * FROM pedidos_venta
         WHERE date(fecha)=? AND empresa_envio=? AND estado='SELLADO' ORDER BY id
@@ -1682,7 +1689,7 @@ def api_pv_exportar_dinsides():
     buf = _pv_excel(pedidos, headers, row, "Dinsides")
     if not buf: return jsonify({"error":"openpyxl no instalado"}), 500
     return send_file(buf, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                     as_attachment=True, download_name=f"dinsides_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx")
+                     as_attachment=True, download_name=f"dinsides_{lima_now().strftime('%Y%m%d_%H%M')}.xlsx")
 
 @app.route("/api/pv/exportar/olva")
 def api_pv_exportar_olva():
@@ -1696,14 +1703,14 @@ def api_pv_exportar_olva():
     buf = _pv_excel(pedidos, headers, row, "Olva")
     if not buf: return jsonify({"error":"openpyxl no instalado"}), 500
     return send_file(buf, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                     as_attachment=True, download_name=f"olva_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx")
+                     as_attachment=True, download_name=f"olva_{lima_now().strftime('%Y%m%d_%H%M')}.xlsx")
 
 @app.route("/api/pv/exportar/marketplace")
 def api_pv_exportar_marketplace():
     canal   = request.args.get("canal","Ripley")
     conn    = get_db()
     pedidos = _pv_pedidos_dia(canal, conn); conn.close()
-    return jsonify({"pedidos": pedidos, "canal": canal, "fecha": datetime.now().strftime("%d/%m/%Y")})
+    return jsonify({"pedidos": pedidos, "canal": canal, "fecha": lima_now().strftime("%d/%m/%Y")})
 
 @app.route("/api/config")
 def api_config_get():
@@ -1859,7 +1866,7 @@ def api_inventario_exportar():
     return send_file(buf,
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                      as_attachment=True,
-                     download_name=f"inventario_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx")
+                     download_name=f"inventario_{lima_now().strftime('%Y%m%d_%H%M')}.xlsx")
 
 ESTADO_IMPORT_MAP = {
     "✅ stock":   "ACTIVO",
@@ -2048,11 +2055,12 @@ def api_venta_manual():
 
     cur.execute("""INSERT INTO ventas_grupos
                    (nombre_cliente,telefono,canal,total,descuento_pct,descuento_motivo,descuento_monto,
-                    tipo_pago,fecha_pedido,fecha_salida,fecha_entrega,comentarios)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    tipo_pago,fecha_pedido,fecha_salida,fecha_entrega,comentarios,fecha)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (nombre_cliente, telefono, canal, total_pagado,
                  descuento_pct, descuento_motivo, descuento_monto,
-                 tipo_pago, fecha_pedido, fecha_salida, fecha_entrega, comentarios))
+                 tipo_pago, fecha_pedido, fecha_salida, fecha_entrega, comentarios,
+                 lima_now().strftime("%Y-%m-%d %H:%M:%S")))
     grupo_id = cur.lastrowid
 
     for item in items:
@@ -2078,11 +2086,12 @@ def api_venta_manual():
         cur.execute("UPDATE skus SET stock=MAX(0,stock-?) WHERE id=?", (cant, pid))
         cur.execute("""INSERT INTO ventas
                        (producto_id,ean13,nombre,color,talla,precio,cantidad,canal,
-                        grupo_id,descuento_pct,descuento_motivo,descuento_monto)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        grupo_id,descuento_pct,descuento_motivo,descuento_monto,fecha)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (pid, prod["codigo_barras"], prod["nombre"], prod["color"], prod["talla"],
                      precio_pagado, cant, canal,
-                     grupo_id, descuento_pct, descuento_motivo, desc_monto_item))
+                     grupo_id, descuento_pct, descuento_motivo, desc_monto_item,
+                     lima_now().strftime("%Y-%m-%d %H:%M:%S")))
 
     conn.commit()
     conn.close()
