@@ -322,6 +322,10 @@ tr:hover td{background:var(--card)}
 .vg-price-val.descuento-precio{color:#8b5cf6}
 .vg-time{font-size:.72rem;color:var(--gray)}
 .vg-items{padding-top:.6rem;border-top:1px solid var(--border);margin-top:.6rem;display:none}
+.vg-masinfo{display:none;flex-wrap:wrap;gap:.35rem .7rem;padding:.5rem 1rem .6rem;border-top:1px solid var(--border);background:var(--bg)}
+.vg-masinfo.open{display:flex}
+.vg-masinfo span{font-size:.78rem;color:var(--gray);background:var(--card);border:1px solid var(--border);border-radius:6px;padding:.2rem .5rem}
+.vg-masinfo-btn{font-size:.7rem;color:var(--accent);background:none;border:1px solid var(--accent);border-radius:4px;padding:.15rem .45rem;cursor:pointer;margin-top:.2rem;white-space:nowrap}
 .vg-items.open{display:block}
 .vg-item-row{display:flex;align-items:center;gap:.5rem;padding:.2rem .3rem;font-size:.8rem;color:var(--gray)}
 .vg-descuento-tag{font-size:.7rem;background:rgba(139,92,246,.08);color:#8b5cf6;border:1px solid rgba(139,92,246,.2);border-radius:4px;padding:.1rem .4rem;white-space:nowrap}
@@ -1116,24 +1120,30 @@ tr:hover td{background:var(--card)}
 
 <!-- ══ MODAL DATOS CLIENTE TICKET ══ -->
 <div class="modal-overlay" id="modalDatosCliente">
-  <div class="modal" style="max-width:480px">
+  <div class="modal" style="max-width:500px">
     <div class="modal-header">
       <div class="modal-title">DATOS DEL CLIENTE</div>
       <button class="modal-close" onclick="closeModal('modalDatosCliente')">×</button>
     </div>
-    <div class="modal-body">
-      <div class="form-group">
-        <label>Nombre cliente <span style="color:var(--gray);font-weight:400">(opcional)</span></label>
-        <input type="text" id="dcNombre" placeholder="Ej: Juan Pérez / DIRECTO"/>
-      </div>
-      <div class="form-group">
-        <label>Teléfono <span style="color:var(--gray);font-weight:400">(opcional)</span></label>
-        <input type="text" id="dcTelefono" placeholder="999 000 000"/>
-      </div>
+    <div class="modal-body" style="max-height:78vh;overflow-y:auto">
+
+      <!-- Cliente -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
         <div class="form-group" style="margin-bottom:0">
+          <label>Nombre cliente <span style="color:var(--gray);font-weight:400">(opcional)</span></label>
+          <input type="text" id="dcNombre" placeholder="Ej: Juan Pérez"/>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label>Teléfono <span style="color:var(--gray);font-weight:400">(opcional)</span></label>
+          <input type="text" id="dcTelefono" placeholder="999 000 000"/>
+        </div>
+      </div>
+
+      <!-- Canal + Pago -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-top:.75rem">
+        <div class="form-group" style="margin-bottom:0">
           <label>Canal de venta</label>
-          <select id="dcCanal">
+          <select id="dcCanal" onchange="dcOnCanalChange()">
             <option value="DIRECTO">Presencial</option>
             <option value="WhatsApp">WhatsApp</option>
             <option value="Instagram">Instagram</option>
@@ -1155,6 +1165,118 @@ tr:hover td{background:var(--card)}
           </select>
         </div>
       </div>
+
+      <!-- Courier + Comisión (hidden, auto-asignados) -->
+      <input type="hidden" id="dcCourier" value="Presencial"/>
+      <input type="hidden" id="dcComision" value="0"/>
+
+      <!-- Toggle delivery -->
+      <div style="margin-top:.75rem;display:flex;align-items:center;gap:.5rem">
+        <input type="checkbox" id="dcTieneDelivery" onchange="dcToggleDelivery()" style="width:16px;height:16px;cursor:pointer"/>
+        <label for="dcTieneDelivery" style="margin:0;cursor:pointer;font-size:.82rem;font-weight:600">Tiene delivery / envío</label>
+      </div>
+
+      <!-- Dirección (condicional — solo courier) -->
+      <div id="dcDireccionRow" style="display:none;margin-top:.75rem">
+        <!-- Distrito -->
+        <div class="form-group" style="margin-bottom:.75rem">
+          <label>Distrito <span id="dcEnvioCosto" style="color:var(--ok);font-weight:700;font-size:.8rem"></span></label>
+          <select id="dcDistrito" onchange="dcOnDistritoChange()" style="width:100%">
+            <option value="">— Selecciona distrito —</option>
+            <optgroup label="Lima (Dinsides)">
+              <option value="Ancón|17">Ancón — S/17</option>
+              <option value="Ate|12">Ate — S/12</option>
+              <option value="Barranco|10">Barranco — S/10</option>
+              <option value="Bellavista|12">Bellavista — S/12</option>
+              <option value="Breña|8">Breña — S/8</option>
+              <option value="Cajamarquilla|21">Cajamarquilla — S/21</option>
+              <option value="Callao|12">Callao — S/12</option>
+              <option value="Carabayllo|12">Carabayllo — S/12</option>
+              <option value="Carmen de la Legua Reynoso|12">Carmen de la Legua — S/12</option>
+              <option value="Cercado de Lima|10">Cercado de Lima — S/10</option>
+              <option value="Chaclacayo|17">Chaclacayo — S/17</option>
+              <option value="Chorrillos|12">Chorrillos — S/12</option>
+              <option value="Chosica|22">Chosica — S/22</option>
+              <option value="Cieneguilla|17">Cieneguilla — S/17</option>
+              <option value="Comas|12">Comas — S/12</option>
+              <option value="El Agustino|10">El Agustino — S/10</option>
+              <option value="El Márquez - Callao|12">El Márquez - Callao — S/12</option>
+              <option value="Huachipa|14">Huachipa — S/14</option>
+              <option value="Huaycan|12">Huaycan — S/12</option>
+              <option value="Independencia|12">Independencia — S/12</option>
+              <option value="Jesús María|10">Jesús María — S/10</option>
+              <option value="Jicamarca - Anexo 22|14">Jicamarca - Anexo 22 — S/14</option>
+              <option value="Jicamarca - Anexo 8|21">Jicamarca - Anexo 8 — S/21</option>
+              <option value="La Molina|10">La Molina — S/10</option>
+              <option value="La Perla|12">La Perla — S/12</option>
+              <option value="La Punta|12">La Punta — S/12</option>
+              <option value="La Victoria|10">La Victoria — S/10</option>
+              <option value="Lince|10">Lince — S/10</option>
+              <option value="Los Olivos|12">Los Olivos — S/12</option>
+              <option value="Lurigancho - Chosica|14">Lurigancho - Chosica — S/14</option>
+              <option value="Lurin|14">Lurín — S/14</option>
+              <option value="Magdalena del Mar|10">Magdalena del Mar — S/10</option>
+              <option value="Manchay|17">Manchay — S/17</option>
+              <option value="Mi Perú|12">Mi Perú — S/12</option>
+              <option value="Miraflores|10">Miraflores — S/10</option>
+              <option value="Pachacamac|19">Pachacamac — S/19</option>
+              <option value="Pucusana|28">Pucusana — S/28</option>
+              <option value="Pueblo Libre|10">Pueblo Libre — S/10</option>
+              <option value="Puente Piedra|12">Puente Piedra — S/12</option>
+              <option value="Punta Hermosa|17">Punta Hermosa — S/17</option>
+              <option value="Punta Negra|21">Punta Negra — S/21</option>
+              <option value="Ricardo Palma|25">Ricardo Palma — S/25</option>
+              <option value="Rímac|10">Rímac — S/10</option>
+              <option value="Salamanca Ate|10">Salamanca Ate — S/10</option>
+              <option value="San Bartolo|22">San Bartolo — S/22</option>
+              <option value="San Borja|10">San Borja — S/10</option>
+              <option value="San Isidro|10">San Isidro — S/10</option>
+              <option value="San Juan de Lurigancho|10">San Juan de Lurigancho — S/10</option>
+              <option value="San Juan de Miraflores|12">San Juan de Miraflores — S/12</option>
+              <option value="San Luis|10">San Luis — S/10</option>
+              <option value="San Martín de Porres|12">San Martín de Porres — S/12</option>
+              <option value="San Miguel|10">San Miguel — S/10</option>
+              <option value="Santa Anita|10">Santa Anita — S/10</option>
+              <option value="Santa Clara - Ate|12">Santa Clara - Ate — S/12</option>
+              <option value="Santa Eulalia|25">Santa Eulalia — S/25</option>
+              <option value="Santa María del Mar|25">Santa María del Mar — S/25</option>
+              <option value="Santa Rosa|17">Santa Rosa — S/17</option>
+              <option value="Santiago de Surco|10">Santiago de Surco — S/10</option>
+              <option value="Surquillo|10">Surquillo — S/10</option>
+              <option value="Ventanilla|12">Ventanilla — S/12</option>
+              <option value="Villa El Salvador|12">Villa El Salvador — S/12</option>
+              <option value="Villa María del Triunfo|12">Villa María del Triunfo — S/12</option>
+            </optgroup>
+            <optgroup label="Provincia (Olva / Shalom)">
+              <option value="__provincia__|0">Provincia — ingresar ciudad</option>
+            </optgroup>
+          </select>
+        </div>
+        <!-- Ciudad + Courier info -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-bottom:.75rem">
+          <div class="form-group" style="margin-bottom:0">
+            <label>Ciudad</label>
+            <input type="text" id="dcCiudad" placeholder="Ej: Lima" readonly style="background:var(--card);cursor:default"/>
+          </div>
+          <div class="form-group" style="margin-bottom:0">
+            <label>Courier</label>
+            <div style="display:flex;align-items:center;gap:.5rem">
+              <input type="text" id="dcCourierDisplay" readonly style="background:var(--card);cursor:default;flex:1;width:100%"/>
+              <select id="dcCourierProv" style="display:none;flex:1;width:100%" onchange="dcOnCourierProvChange()">
+                <option value="Olva">Olva Courier</option>
+                <option value="Shalom">Shalom</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <!-- Dirección -->
+        <div class="form-group" style="margin-bottom:0">
+          <label>Dirección</label>
+          <input type="text" id="dcDireccion" placeholder="Ej: Av. Larco 123"/>
+        </div>
+      </div>
+
+      <!-- Fechas -->
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.75rem;margin-top:.75rem">
         <div class="form-group" style="margin-bottom:0">
           <label>Fecha pedido</label>
@@ -1169,6 +1291,26 @@ tr:hover td{background:var(--card)}
           <input type="date" id="dcFechaEntrega"/>
         </div>
       </div>
+
+      <!-- Factura (condicional) -->
+      <div style="margin-top:.75rem;display:flex;align-items:center;gap:.5rem">
+        <input type="checkbox" id="dcFactura" onchange="dcOnFacturaChange()" style="width:16px;height:16px;cursor:pointer"/>
+        <label for="dcFactura" style="margin:0;cursor:pointer;font-size:.82rem">Cliente solicita factura</label>
+      </div>
+      <div id="dcFacturaRow" style="display:none;margin-top:.5rem">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
+          <div class="form-group" style="margin-bottom:0">
+            <label>RUC</label>
+            <input type="text" id="dcRuc" placeholder="20xxxxxxxxx" maxlength="11"/>
+          </div>
+          <div class="form-group" style="margin-bottom:0">
+            <label>Razón social</label>
+            <input type="text" id="dcRazonSocial" placeholder="Empresa S.A.C."/>
+          </div>
+        </div>
+      </div>
+
+      <!-- Comentarios -->
       <div class="form-group" style="margin-top:.75rem;margin-bottom:0">
         <label>Comentarios / Observaciones <span style="color:var(--gray);font-weight:400">(opcional)</span></label>
         <textarea id="dcComentarios" rows="2" placeholder="Ej: Enviar a provincia, cliente recurrente…"
@@ -1419,6 +1561,7 @@ tr:hover td{background:var(--card)}
       <span style="font-size:.72rem;color:var(--gray)">Haz clic en una etiqueta (o ×) para excluirla</span>
       <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="gridSelAll(true)">☑ Todas</button>
       <button class="btn btn-outline btn-sm" onclick="gridSelAll(false)">☐ Ninguna</button>
+      <button class="btn btn-outline btn-sm" style="color:var(--red);border-color:var(--red)" onclick="limpiarColaImpresion()">🗑 Limpiar cola</button>
     </div>
     <div class="label-grid" id="labelGrid"></div>
     <div class="modal-footer">
@@ -2127,7 +2270,91 @@ function confirmarTicket(){
   $('dcFechaSalida').value  = manana;
   $('dcFechaEntrega').value = manana;
   $('dcComentarios').value  = '';
+  $('dcCourier').value      = 'Presencial';
+  $('dcDistrito').value     = '';
+  $('dcDireccion').value    = '';
+  if($('dcCiudad')){ $('dcCiudad').value=''; $('dcCiudad').readOnly=true; $('dcCiudad').style.background='var(--card)'; }
+  if($('dcCourierDisplay')) $('dcCourierDisplay').value='';
+  if($('dcEnvioCosto')) $('dcEnvioCosto').textContent='';
+  if($('dcCourierProv')){ $('dcCourierProv').style.display='none'; }
+  if($('dcTieneDelivery')) $('dcTieneDelivery').checked = false;
+  $('dcFactura').checked    = false;
+  $('dcRuc').value          = '';
+  $('dcRazonSocial').value  = '';
+  $('dcDireccionRow').style.display = 'none';
+  $('dcFacturaRow').style.display   = 'none';
+  dcOnCanalChange();
   openModal('modalDatosCliente');
+}
+
+function dcOnCanalChange(){
+  // Canal ya no controla comision ni courier — se maneja por distrito
+}
+
+function dcToggleDelivery(){
+  const tiene = $('dcTieneDelivery').checked;
+  $('dcDireccionRow').style.display = tiene ? 'block' : 'none';
+  if(!tiene){
+    $('dcDistrito').value='';
+    $('dcCiudad').value='';
+    $('dcDireccion').value='';
+    $('dcCourierDisplay').value='';
+    $('dcEnvioCosto').textContent='';
+    $('dcCourier').value='Presencial';
+    $('dcCourierProv').style.display='none';
+  }
+}
+
+function dcOnDistritoChange(){
+  const val = $('dcDistrito').value;
+  if(!val){ 
+    $('dcCiudad').value=''; 
+    $('dcCourierDisplay').value='';
+    $('dcCourier').value='Presencial';
+    $('dcEnvioCosto').textContent='';
+    $('dcCourierProv').style.display='none';
+    $('dcCourierDisplay').style.display='block';
+    return; 
+  }
+  if(val === '__provincia__|0'){
+    // Provincia
+    $('dcCiudad').value='';
+    $('dcCiudad').readOnly=false;
+    $('dcCiudad').style.background='';
+    $('dcCiudad').style.cursor='';
+    $('dcCiudad').placeholder='Ej: Trujillo';
+    $('dcCourierDisplay').style.display='none';
+    $('dcCourierProv').style.display='block';
+    $('dcCourier').value='Olva';
+    $('dcEnvioCosto').textContent='';
+  } else {
+    const parts = val.split('|');
+    const distrito = parts[0];
+    const costo = parts[1];
+    $('dcCiudad').value='Lima';
+    $('dcCiudad').readOnly=true;
+    $('dcCiudad').style.background='var(--card)';
+    $('dcCiudad').style.cursor='default';
+    $('dcCourierDisplay').value='Dinsides';
+    $('dcCourierDisplay').style.display='block';
+    $('dcCourierProv').style.display='none';
+    $('dcCourier').value='Dinsides';
+    $('dcEnvioCosto').textContent=`· Envío S/${costo}`;
+  }
+}
+
+function dcOnCourierProvChange(){
+  $('dcCourier').value = $('dcCourierProv').value;
+}
+
+function dcOnCourierChange(){
+  const courier = $('dcCourier').value;
+  const necesitaDireccion = ['Dinsides','Olva','Shalom'].includes(courier);
+  $('dcDireccionRow').style.display = necesitaDireccion ? 'block' : 'none';
+}
+
+function dcOnFacturaChange(){
+  $('dcFacturaRow').style.display = $('dcFactura').checked ? 'block' : 'none';
 }
 
 async function submitTicket(){
@@ -2137,6 +2364,15 @@ async function submitTicket(){
     const telefono       = $('dcTelefono').value.trim();
     const canal          = $('dcCanal').value || 'DIRECTO';
     const tipo_pago      = $('dcPago').value || 'Efectivo';
+    const courier        = $('dcCourier').value || 'Presencial';
+    const distritoRaw    = $('dcDistrito')?.value || '';
+    const distrito       = distritoRaw.includes('|') ? distritoRaw.split('|')[0] : distritoRaw;
+    const ciudad         = $('dcCiudad')?.value.trim() || '';
+    const direccion      = $('dcDireccion')?.value.trim() || '';
+    const comision_pct   = parseFloat($('dcComision')?.value) || 0;
+    const factura        = $('dcFactura')?.checked || false;
+    const ruc            = $('dcRuc')?.value.trim() || '';
+    const razon_social   = $('dcRazonSocial')?.value.trim() || '';
     const fecha_pedido   = $('dcFechaPedido').value;
     const fecha_salida   = $('dcFechaSalida').value;
     const fecha_entrega  = $('dcFechaEntrega').value;
@@ -2152,6 +2388,13 @@ async function submitTicket(){
       telefono,
       canal,
       tipo_pago,
+      courier,
+      distrito,
+      direccion,
+      comision_pct,
+      factura,
+      ruc,
+      razon_social,
       fecha_pedido,
       fecha_salida,
       fecha_entrega,
@@ -2421,7 +2664,9 @@ const TALLA_EMOJI = {S:'🟢',M:'🟡',L:'🔵',XL:'🟣',XXL:'⚫'};
 
 async function loadVentas(){
   const desde = $('ventaDesde').value||'';
-  const grupos = await api(`/api/ventas_grupos${desde?'?desde='+desde:''}`);
+  const isTraining = document.body.classList.contains('training-mode');
+  const tfParam = isTraining ? 'training=1' : 'training=0';
+  const grupos = await api(`/api/ventas_grupos?${tfParam}${desde?'&desde='+desde:''}`);
   if(grupos.error){ $('ventasList').innerHTML='<p style="color:var(--red);padding:1rem">Error cargando ventas</p>'; return; }
 
   let total=0, totalCount=0, normalTotal=0, descTotal=0, descMonto=0;
@@ -2452,8 +2697,30 @@ async function loadVentas(){
 
     const expandHint = nItems>1 ? `<span style="font-size:.7rem;color:var(--gray)"> ▾ ver ${nItems} productos</span>` : '';
 
-    return `<div class="vg-card ${descClass}" onclick="this.querySelector('.vg-items').classList.toggle('open')">
-      <div class="vg-header">
+    // Mas info panel
+    const tel      = g.telefono || '';
+    const tipoPago = g.tipo_pago || '';
+    const courier  = g.courier || '';
+    const distrito = g.distrito || '';
+    const ciudad   = g.ciudad || '';
+    const fPedido  = g.fecha_pedido || '';
+    const fSalida  = g.fecha_salida || '';
+    const fEntrega = g.fecha_entrega || '';
+    const coment   = g.comentarios || '';
+    const tieneInfo = tel||tipoPago||courier||distrito||coment;
+    const masInfoHtml = tieneInfo ? `
+      <div class="vg-masinfo">
+        ${tel ? `<span>📱 ${tel}</span>` : ''}
+        ${tipoPago ? `<span>💳 ${tipoPago}</span>` : ''}
+        ${courier ? `<span>🚚 ${courier}${distrito?' · '+distrito:''}${ciudad&&ciudad!=='Lima'?' ('+ciudad+')':''}</span>` : ''}
+        ${fPedido ? `<span>📅 Pedido: ${fPedido}</span>` : ''}
+        ${fSalida ? `<span>📦 Salida: ${fSalida}</span>` : ''}
+        ${fEntrega ? `<span>🏠 Entrega: ${fEntrega}</span>` : ''}
+        ${coment ? `<span>💬 ${coment}</span>` : ''}
+      </div>` : '';
+
+    return `<div class="vg-card ${descClass}">
+      <div class="vg-header" onclick="this.closest('.vg-card').querySelector('.vg-items').classList.toggle('open')">
         <div class="vg-icon">${icon}</div>
         <div class="vg-info">
           <div class="vg-name">${cliente}${dTag}</div>
@@ -2461,8 +2728,10 @@ async function loadVentas(){
         </div>
         <div class="vg-price">
           <div class="vg-price-val ${priceClass}">S/ ${gt.toFixed(0)}</div>
+          ${tieneInfo ? `<button class="vg-masinfo-btn" onclick="event.stopPropagation();this.closest('.vg-card').querySelector('.vg-masinfo').classList.toggle('open');this.textContent=this.textContent==='+ más info'?'− menos':'+ más info'">+ más info</button>` : ''}
         </div>
       </div>
+      ${masInfoHtml}
       <div class="vg-items${nItems===1?' open':''}">${itemsHtml}</div>
     </div>`;
   }).join('') || '<p style="color:var(--gray);padding:1rem">Sin ventas en este período</p>';
@@ -2856,6 +3125,16 @@ function updateCantidad(key, val){
 function gridSelAll(val){
   gridExcluidas=val?new Set():new Set(gridItems.map(i=>i.key));
   renderGrid();
+}
+
+function limpiarColaImpresion(){
+  const total = gridItems.length;
+  if(!total){ toast('La cola ya está vacía','error'); return; }
+  if(!confirm(`¿Limpiar toda la cola de impresión?\n\n${total} etiqueta${total!==1?'s':''} serán eliminadas de la vista previa.`)) return;
+  gridItems=[];
+  gridExcluidas=new Set();
+  closeModal('modalGridMasivo');
+  toast('Cola de impresión limpiada');
 }
 
 async function abrirMasivoCategoria(){

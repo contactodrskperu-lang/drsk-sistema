@@ -99,6 +99,10 @@ def migrate_db():
         "ALTER TABLE ventas_grupos ADD COLUMN fecha_salida TEXT DEFAULT ''",
         "ALTER TABLE ventas_grupos ADD COLUMN fecha_entrega TEXT DEFAULT ''",
         "ALTER TABLE ventas_grupos ADD COLUMN comentarios TEXT DEFAULT ''",
+        "ALTER TABLE ventas_grupos ADD COLUMN courier TEXT DEFAULT ''",
+        "ALTER TABLE ventas_grupos ADD COLUMN distrito TEXT DEFAULT ''",
+        "ALTER TABLE ventas_grupos ADD COLUMN ciudad TEXT DEFAULT ''",
+        "ALTER TABLE ventas_grupos ADD COLUMN direccion TEXT DEFAULT ''",
         "ALTER TABLE ventas ADD COLUMN es_training INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE ventas_grupos ADD COLUMN es_training INTEGER NOT NULL DEFAULT 0",
     ]:
@@ -284,6 +288,10 @@ def _migrate_single_db(db_path):
         "ALTER TABLE ventas_grupos ADD COLUMN fecha_salida TEXT DEFAULT ''",
         "ALTER TABLE ventas_grupos ADD COLUMN fecha_entrega TEXT DEFAULT ''",
         "ALTER TABLE ventas_grupos ADD COLUMN comentarios TEXT DEFAULT ''",
+        "ALTER TABLE ventas_grupos ADD COLUMN courier TEXT DEFAULT ''",
+        "ALTER TABLE ventas_grupos ADD COLUMN distrito TEXT DEFAULT ''",
+        "ALTER TABLE ventas_grupos ADD COLUMN ciudad TEXT DEFAULT ''",
+        "ALTER TABLE ventas_grupos ADD COLUMN direccion TEXT DEFAULT ''",
         "ALTER TABLE ventas ADD COLUMN es_training INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE ventas_grupos ADD COLUMN es_training INTEGER NOT NULL DEFAULT 0",
     ]:
@@ -566,7 +574,7 @@ def api_venta():
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (pid, prod["codigo_barras"], prod["nombre"], prod["color"], prod["talla"],
           precio_pagado, cant, canal, descuento_pct, descuento_motivo, descuento_monto,
-          lima_now().strftime("%Y-%m-%d %H:%M:%S"), int(_training_mode)))
+          lima_now().strftime("%Y-%m-%d %H:%M:%S"), is_training))
 
     conn.commit()
     conn.close()
@@ -1999,7 +2007,9 @@ def api_inventario_importar():
 
 @app.route("/api/ventas_grupos")
 def api_ventas_grupos():
-    desde = request.args.get("desde", "")
+    desde    = request.args.get("desde", "")
+    training = request.args.get("training", "0") == "1"
+    tf       = "v.es_training=1" if training else "(v.es_training=0 OR v.es_training IS NULL)"
     conn  = get_db()
     sql   = """SELECT v.*,
                  CASE WHEN p.tipo IS NOT NULL
@@ -2008,13 +2018,17 @@ def api_ventas_grupos():
                  vg.nombre_cliente, vg.telefono AS vg_telefono,
                  vg.descuento_pct AS vg_descuento_pct,
                  vg.descuento_motivo AS vg_descuento_motivo,
-                 vg.descuento_monto AS vg_descuento_monto
+                 vg.descuento_monto AS vg_descuento_monto,
+                 vg.tipo_pago, vg.courier, vg.distrito, vg.ciudad,
+                 vg.fecha_pedido, vg.fecha_salida, vg.fecha_entrega, vg.comentarios,
+                 vg.telefono AS vg_telefono2
                FROM ventas v
                LEFT JOIN skus p ON v.producto_id = p.id
                LEFT JOIN ventas_grupos vg ON v.grupo_id = vg.id"""
     params = []
+    sql += f" WHERE {tf}"
     if desde:
-        sql += " WHERE v.fecha >= ?"
+        sql += " AND v.fecha >= ?"
         params.append(desde)
     sql += " ORDER BY v.fecha DESC LIMIT 500"
     rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
@@ -2035,6 +2049,14 @@ def api_ventas_grupos():
                 "fecha": v["fecha"],
                 "descuento_pct": pct, "descuento_motivo": motiv,
                 "descuento_monto": 0, "items": [], "total": 0,
+                "tipo_pago": v.get("tipo_pago") or "",
+                "courier": v.get("courier") or "",
+                "distrito": v.get("distrito") or "",
+                "ciudad": v.get("ciudad") or "",
+                "fecha_pedido": v.get("fecha_pedido") or "",
+                "fecha_salida": v.get("fecha_salida") or "",
+                "fecha_entrega": v.get("fecha_entrega") or "",
+                "comentarios": v.get("comentarios") or "",
             }
             orden.append(key)
         grupos[key]["items"].append(v)
@@ -2059,7 +2081,12 @@ def api_venta_manual():
     fecha_salida     = str(data.get("fecha_salida") or "").strip()
     fecha_entrega    = str(data.get("fecha_entrega") or "").strip()
     comentarios      = str(data.get("comentarios") or "").strip()
+    courier          = str(data.get("courier") or "").strip()
+    distrito         = str(data.get("distrito") or "").strip()
+    ciudad           = str(data.get("ciudad") or "").strip()
+    direccion        = str(data.get("direccion") or "").strip()
     items            = data.get("items", [])
+    is_training      = 1 if data.get("training") else 0
 
     if not items:
         return jsonify({"error": "Sin productos en el carrito"}), 400
@@ -2075,12 +2102,14 @@ def api_venta_manual():
 
     cur.execute("""INSERT INTO ventas_grupos
                    (nombre_cliente,telefono,canal,total,descuento_pct,descuento_motivo,descuento_monto,
-                    tipo_pago,fecha_pedido,fecha_salida,fecha_entrega,comentarios,fecha,es_training)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    tipo_pago,fecha_pedido,fecha_salida,fecha_entrega,comentarios,
+                    courier,distrito,ciudad,direccion,fecha,es_training)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (nombre_cliente, telefono, canal, total_pagado,
                  descuento_pct, descuento_motivo, descuento_monto,
                  tipo_pago, fecha_pedido, fecha_salida, fecha_entrega, comentarios,
-                 lima_now().strftime("%Y-%m-%d %H:%M:%S"), int(_training_mode)))
+                 courier, distrito, ciudad, direccion,
+                 lima_now().strftime("%Y-%m-%d %H:%M:%S"), is_training))
     grupo_id = cur.lastrowid
 
     for item in items:
@@ -2111,7 +2140,7 @@ def api_venta_manual():
                     (pid, prod["codigo_barras"], prod["nombre"], prod["color"], prod["talla"],
                      precio_pagado, cant, canal,
                      grupo_id, descuento_pct, descuento_motivo, desc_monto_item,
-                     lima_now().strftime("%Y-%m-%d %H:%M:%S"), int(_training_mode)))
+                     lima_now().strftime("%Y-%m-%d %H:%M:%S"), is_training))
 
     conn.commit()
     conn.close()
