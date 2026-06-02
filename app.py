@@ -103,6 +103,14 @@ def migrate_db():
         "ALTER TABLE ventas_grupos ADD COLUMN distrito TEXT DEFAULT ''",
         "ALTER TABLE ventas_grupos ADD COLUMN ciudad TEXT DEFAULT ''",
         "ALTER TABLE ventas_grupos ADD COLUMN direccion TEXT DEFAULT ''",
+        "ALTER TABLE despachos ADD COLUMN telefono TEXT DEFAULT ''",
+        "ALTER TABLE despachos ADD COLUMN courier TEXT DEFAULT ''",
+        "ALTER TABLE despachos ADD COLUMN distrito TEXT DEFAULT ''",
+        "ALTER TABLE despachos ADD COLUMN ciudad TEXT DEFAULT ''",
+        "ALTER TABLE despachos ADD COLUMN direccion TEXT DEFAULT ''",
+        "ALTER TABLE despachos ADD COLUMN tipo_pago TEXT DEFAULT ''",
+        "ALTER TABLE despachos ADD COLUMN fecha_entrega TEXT DEFAULT ''",
+        "ALTER TABLE ventas_grupos ADD COLUMN tiene_devolucion INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE ventas ADD COLUMN es_training INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE ventas_grupos ADD COLUMN es_training INTEGER NOT NULL DEFAULT 0",
     ]:
@@ -120,9 +128,16 @@ def migrate_db():
     CREATE TABLE IF NOT EXISTS despachos (
         id             INTEGER PRIMARY KEY AUTOINCREMENT,
         nombre_cliente TEXT NOT NULL DEFAULT '',
+        telefono       TEXT DEFAULT '',
         canal          TEXT NOT NULL DEFAULT 'WhatsApp',
         referencia     TEXT DEFAULT '',
         notas          TEXT DEFAULT '',
+        courier        TEXT DEFAULT '',
+        distrito       TEXT DEFAULT '',
+        ciudad         TEXT DEFAULT '',
+        direccion      TEXT DEFAULT '',
+        tipo_pago      TEXT DEFAULT '',
+        fecha_entrega  TEXT DEFAULT '',
         estado         TEXT NOT NULL DEFAULT 'PENDIENTE',
         fecha          TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
@@ -249,7 +264,53 @@ def migrate_db():
         descuento_motivo TEXT DEFAULT '',
         descuento_monto  REAL NOT NULL DEFAULT 0,
         fecha            TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        es_training      INTEGER NOT NULL DEFAULT 0
+        es_training      INTEGER NOT NULL DEFAULT 0,
+        tiene_devolucion INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS ordenes_compra (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        referencia      TEXT DEFAULT '',
+        proveedor       TEXT DEFAULT '',
+        forma_pago      TEXT DEFAULT 'contado',
+        monto_total     REAL DEFAULT 0,
+        monto_pagado    REAL DEFAULT 0,
+        fecha_orden     TEXT DEFAULT '',
+        fecha_esperada  TEXT DEFAULT '',
+        notas           TEXT DEFAULT '',
+        estado          TEXT DEFAULT 'ORDEN',
+        fecha           TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS oc_items (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        orden_id        INTEGER NOT NULL,
+        producto_id     INTEGER,
+        ean13           TEXT DEFAULT '',
+        nombre          TEXT DEFAULT '',
+        color           TEXT DEFAULT '',
+        talla           TEXT DEFAULT '',
+        cantidad        INTEGER DEFAULT 1,
+        costo_unit      REAL DEFAULT 0,
+        cantidad_recibida INTEGER DEFAULT 0,
+        estado          TEXT DEFAULT 'PENDIENTE',
+        FOREIGN KEY (orden_id) REFERENCES ordenes_compra(id)
+    );
+    CREATE TABLE IF NOT EXISTS devoluciones (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        grupo_id    INTEGER NOT NULL,
+        motivo      TEXT NOT NULL,
+        tipo        TEXT NOT NULL DEFAULT 'devolucion',
+        monto       REAL NOT NULL DEFAULT 0,
+        notas       TEXT DEFAULT '',
+        fecha       TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (grupo_id) REFERENCES ventas_grupos(id)
+    );
+    CREATE TABLE IF NOT EXISTS devolucion_items (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        devolucion_id  INTEGER NOT NULL,
+        producto_id    INTEGER,
+        cantidad       INTEGER NOT NULL DEFAULT 1,
+        precio         REAL NOT NULL DEFAULT 0,
+        FOREIGN KEY (devolucion_id) REFERENCES devoluciones(id)
     );
     CREATE TABLE IF NOT EXISTS config (
         clave TEXT PRIMARY KEY,
@@ -292,6 +353,14 @@ def _migrate_single_db(db_path):
         "ALTER TABLE ventas_grupos ADD COLUMN distrito TEXT DEFAULT ''",
         "ALTER TABLE ventas_grupos ADD COLUMN ciudad TEXT DEFAULT ''",
         "ALTER TABLE ventas_grupos ADD COLUMN direccion TEXT DEFAULT ''",
+        "ALTER TABLE despachos ADD COLUMN telefono TEXT DEFAULT ''",
+        "ALTER TABLE despachos ADD COLUMN courier TEXT DEFAULT ''",
+        "ALTER TABLE despachos ADD COLUMN distrito TEXT DEFAULT ''",
+        "ALTER TABLE despachos ADD COLUMN ciudad TEXT DEFAULT ''",
+        "ALTER TABLE despachos ADD COLUMN direccion TEXT DEFAULT ''",
+        "ALTER TABLE despachos ADD COLUMN tipo_pago TEXT DEFAULT ''",
+        "ALTER TABLE despachos ADD COLUMN fecha_entrega TEXT DEFAULT ''",
+        "ALTER TABLE ventas_grupos ADD COLUMN tiene_devolucion INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE ventas ADD COLUMN es_training INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE ventas_grupos ADD COLUMN es_training INTEGER NOT NULL DEFAULT 0",
     ]:
@@ -652,34 +721,87 @@ def api_categorias():
 def api_dashboard():
     conn = get_db()
     cur  = conn.cursor()
+    hoy  = lima_now().strftime("%Y-%m-%d")
+    mes  = hoy[:7]
+    sem_inicio = (lima_now() - __import__("datetime").timedelta(days=lima_now().weekday())).strftime("%Y-%m-%d")
 
     total_skus  = cur.execute("SELECT COUNT(*) FROM skus").fetchone()[0]
     agotados    = cur.execute("SELECT COUNT(*) FROM skus WHERE stock=0").fetchone()[0]
     bajo_stock  = cur.execute("SELECT COUNT(*) FROM skus WHERE stock BETWEEN 1 AND 2").fetchone()[0]
+    con_stock   = cur.execute("SELECT COUNT(*) FROM skus WHERE stock>0").fetchone()[0]
 
-    hoy = lima_now().strftime("%Y-%m-%d")
-    ventas_hoy  = cur.execute(
-        "SELECT COUNT(*), COALESCE(SUM(precio*cantidad),0) FROM ventas WHERE fecha LIKE ?", (f"{hoy}%",)
-    ).fetchone()
-    ventas_mes  = cur.execute(
-        "SELECT COUNT(*), COALESCE(SUM(precio*cantidad),0) FROM ventas WHERE fecha LIKE ?",
-        (f"{hoy[:7]}%",)
-    ).fetchone()
+    # Ventas (excluye training)
+    vh = cur.execute("SELECT COUNT(*), COALESCE(SUM(precio*cantidad),0) FROM ventas WHERE fecha LIKE ? AND (es_training=0 OR es_training IS NULL)", (f"{hoy}%",)).fetchone()
+    vm = cur.execute("SELECT COUNT(*), COALESCE(SUM(precio*cantidad),0) FROM ventas WHERE fecha LIKE ? AND (es_training=0 OR es_training IS NULL)", (f"{mes}%",)).fetchone()
+    vs = cur.execute("SELECT COUNT(*), COALESCE(SUM(precio*cantidad),0) FROM ventas WHERE fecha >= ? AND (es_training=0 OR es_training IS NULL)", (sem_inicio,)).fetchone()
 
-    valor_inv   = cur.execute(
-        "SELECT COALESCE(SUM(stock*precio),0) FROM skus"
-    ).fetchone()[0]
+    # Tickets (grupos de venta)
+    th = cur.execute("SELECT COUNT(*), COALESCE(SUM(total),0) FROM ventas_grupos WHERE fecha LIKE ? AND (es_training=0 OR es_training IS NULL)", (f"{hoy}%",)).fetchone()
+    tm = cur.execute("SELECT COUNT(*), COALESCE(SUM(total),0) FROM ventas_grupos WHERE fecha LIKE ? AND (es_training=0 OR es_training IS NULL)", (f"{mes}%",)).fetchone()
+
+    # Valor inventario
+    valor_inv  = cur.execute("SELECT COALESCE(SUM(stock*precio),0) FROM skus").fetchone()[0]
+    costo_inv  = cur.execute("SELECT COALESCE(SUM(stock*costo),0) FROM skus WHERE costo IS NOT NULL AND costo > 0").fetchone()[0]
+
+    # Canales del mes
+    canales_mes = cur.execute("""
+        SELECT canal, COUNT(*) n, COALESCE(SUM(total),0) total
+        FROM ventas_grupos
+        WHERE fecha LIKE ? AND (es_training=0 OR es_training IS NULL)
+        GROUP BY canal ORDER BY total DESC
+    """, (f"{mes}%",)).fetchall()
+
+    # Top productos del mes
+    top_productos = cur.execute("""
+        SELECT v.nombre, v.color, v.talla, SUM(v.cantidad) cnt, COALESCE(SUM(v.precio*v.cantidad),0) total
+        FROM ventas v
+        WHERE v.fecha LIKE ? AND (v.es_training=0 OR v.es_training IS NULL)
+        GROUP BY v.producto_id, v.talla
+        ORDER BY cnt DESC LIMIT 5
+    """, (f"{mes}%",)).fetchall()
+
+    # Ventas por distrito (top 5)
+    top_distritos = cur.execute("""
+        SELECT distrito, COUNT(*) n, COALESCE(SUM(total),0) total
+        FROM ventas_grupos
+        WHERE fecha LIKE ? AND distrito != '' AND (es_training=0 OR es_training IS NULL)
+        GROUP BY distrito ORDER BY total DESC LIMIT 5
+    """, (f"{mes}%",)).fetchall()
+
+    # Métodos de pago del mes
+    metodos_pago = cur.execute("""
+        SELECT tipo_pago, COUNT(*) n, COALESCE(SUM(total),0) total
+        FROM ventas_grupos
+        WHERE fecha LIKE ? AND tipo_pago != '' AND (es_training=0 OR es_training IS NULL)
+        GROUP BY tipo_pago ORDER BY total DESC
+    """, (f"{mes}%",)).fetchall()
+
+    # Despachos pendientes
+    desp_pend = cur.execute("SELECT COUNT(*) FROM despachos WHERE estado='PENDIENTE'").fetchone()[0]
+    desp_rec  = cur.execute("SELECT COUNT(*) FROM despachos WHERE estado='EN RECOLECCIÓN'").fetchone()[0]
+    desp_listo= cur.execute("SELECT COUNT(*) FROM despachos WHERE estado='LISTO'").fetchone()[0]
 
     conn.close()
     return jsonify({
-        "total_skus":   total_skus,
-        "agotados":     agotados,
-        "bajo_stock":   bajo_stock,
-        "ventas_hoy_n": ventas_hoy[0],
-        "ventas_hoy_s": round(ventas_hoy[1], 2),
-        "ventas_mes_n": ventas_mes[0],
-        "ventas_mes_s": round(ventas_mes[1], 2),
-        "valor_inv":    round(valor_inv, 2),
+        "total_skus":    total_skus,
+        "con_stock":     con_stock,
+        "agotados":      agotados,
+        "bajo_stock":    bajo_stock,
+        "ventas_hoy_n":  vh[0], "ventas_hoy_s":  round(vh[1], 2),
+        "ventas_sem_n":  vs[0], "ventas_sem_s":  round(vs[1], 2),
+        "ventas_mes_n":  vm[0], "ventas_mes_s":  round(vm[1], 2),
+        "tickets_hoy_n": th[0], "tickets_hoy_s": round(th[1], 2),
+        "tickets_mes_n": tm[0], "tickets_mes_s": round(tm[1], 2),
+        "valor_inv":     round(valor_inv, 2),
+        "costo_inv":     round(costo_inv, 2),
+        "margen_inv":    round(valor_inv - costo_inv, 2),
+        "canales_mes":   [{"canal":r[0],"n":r[1],"total":round(r[2],2)} for r in canales_mes],
+        "top_productos": [{"nombre":r[0],"color":r[1],"talla":r[2],"cnt":r[3],"total":round(r[4],2)} for r in top_productos],
+        "top_distritos": [{"distrito":r[0],"n":r[1],"total":round(r[2],2)} for r in top_distritos],
+        "metodos_pago":  [{"metodo":r[0],"n":r[1],"total":round(r[2],2)} for r in metodos_pago],
+        "desp_pendiente":desp_pend,
+        "desp_recoleccion":desp_rec,
+        "desp_listo":    desp_listo,
     })
 
 # Generar ZPL/TSPL — lookea variante EAN para que el código de barras resuelva talla
@@ -2005,6 +2127,197 @@ def api_inventario_importar():
     conn.commit(); conn.close()
     return jsonify({"ok": True, "importados": imported, "actualizados": updated, "omitidos": skipped})
 
+
+
+# ── ÓRDENES DE COMPRA ────────────────────────────────────────────────────
+
+@app.route("/api/ordenes_compra")
+def api_ordenes_compra():
+    estado = request.args.get("estado", "")
+    conn   = get_db()
+    if estado:
+        rows = conn.execute("SELECT * FROM ordenes_compra WHERE estado=? ORDER BY fecha DESC", (estado,)).fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM ordenes_compra ORDER BY fecha DESC LIMIT 100").fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.route("/api/orden_compra", methods=["POST"])
+def api_crear_orden_compra():
+    data          = request.get_json(silent=True)
+    proveedor     = str(data.get("proveedor","")).strip()
+    forma_pago    = str(data.get("forma_pago","contado")).strip()
+    fecha_esperada= str(data.get("fecha_esperada","")).strip()
+    notas         = str(data.get("notas","")).strip()
+    items         = data.get("items",[])
+
+    if not items:
+        return jsonify({"error":"Sin productos"}), 400
+
+    monto_total = sum(float(i.get("costo_unit",0))*int(i.get("cantidad",1)) for i in items)
+
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute("""INSERT INTO ordenes_compra
+                   (proveedor,forma_pago,monto_total,fecha_esperada,notas,estado,fecha)
+                   VALUES (?,?,?,?,?,?,?)""",
+                (proveedor, forma_pago, monto_total, fecha_esperada, notas,
+                 "ORDEN", lima_now().strftime("%Y-%m-%d %H:%M:%S")))
+    oc_id = cur.lastrowid
+
+    for item in items:
+        pid  = item.get("producto_id")
+        cur.execute("""INSERT INTO oc_items
+                       (orden_id,producto_id,ean13,nombre,color,talla,cantidad,costo_unit,estado)
+                       VALUES (?,?,?,?,?,?,?,?,?)""",
+                    (oc_id, pid,
+                     item.get("ean13",""), item.get("nombre",""),
+                     item.get("color",""), item.get("talla",""),
+                     int(item.get("cantidad",1)), float(item.get("costo_unit",0)),
+                     "PENDIENTE"))
+
+    conn.commit()
+    conn.close()
+    return jsonify({"ok":True, "orden_id":oc_id, "monto_total":monto_total})
+
+@app.route("/api/orden_compra/<int:oid>")
+def api_orden_compra_detalle(oid):
+    conn  = get_db()
+    orden = conn.execute("SELECT * FROM ordenes_compra WHERE id=?", (oid,)).fetchone()
+    items = conn.execute("SELECT * FROM oc_items WHERE orden_id=?", (oid,)).fetchall()
+    conn.close()
+    if not orden:
+        return jsonify({"error":"No encontrado"}), 404
+    return jsonify({"orden":dict(orden), "items":[dict(i) for i in items]})
+
+@app.route("/api/orden_compra/<int:oid>/estado", methods=["PUT"])
+def api_orden_compra_estado(oid):
+    data   = request.get_json(silent=True)
+    estado = str(data.get("estado","")).strip()
+    # Estados válidos
+    estados_validos = ["ORDEN","PRODUCCION_1","PRODUCCION_2","ACEPTADO","RECHAZADO","STOCK"]
+    if estado not in estados_validos:
+        return jsonify({"error":"Estado inválido"}), 400
+
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute("UPDATE ordenes_compra SET estado=? WHERE id=?", (estado, oid))
+
+    # Si pasa a STOCK → actualizar inventario
+    if estado == "STOCK":
+        items = conn.execute("SELECT * FROM oc_items WHERE orden_id=?", (oid,)).fetchall()
+        for item in items:
+            if item["producto_id"]:
+                cur.execute("UPDATE skus SET stock=stock+? WHERE id=?",
+                            (item["cantidad"], item["producto_id"]))
+                cur.execute("UPDATE oc_items SET cantidad_recibida=?, estado='RECIBIDO' WHERE id=?",
+                            (item["cantidad"], item["id"]))
+
+    conn.commit()
+    conn.close()
+    return jsonify({"ok":True})
+
+@app.route("/api/orden_compra/<int:oid>", methods=["DELETE"])
+def api_orden_compra_cancelar(oid):
+    conn = get_db()
+    conn.execute("UPDATE ordenes_compra SET estado='CANCELADO' WHERE id=?", (oid,))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok":True})
+
+# ── DEVOLUCIONES ────────────────────────────────────────────────────────
+
+@app.route("/api/devoluciones")
+def api_devoluciones():
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT d.*, vg.nombre_cliente, vg.canal, vg.total as venta_total
+        FROM devoluciones d
+        LEFT JOIN ventas_grupos vg ON d.grupo_id = vg.id
+        ORDER BY d.fecha DESC LIMIT 100
+    """).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.route("/api/devolucion", methods=["POST"])
+def api_crear_devolucion():
+    data      = request.get_json(silent=True)
+    grupo_id  = int(data.get("grupo_id", 0))
+    motivo    = str(data.get("motivo", "")).strip()
+    tipo      = str(data.get("tipo", "devolucion")).strip()  # devolucion / cambio
+    items     = data.get("items", [])  # [{producto_id, cantidad, precio}]
+    notas     = str(data.get("notas", "")).strip()
+
+    if not grupo_id or not motivo or not items:
+        return jsonify({"error": "Faltan datos obligatorios"}), 400
+
+    conn = get_db()
+    cur  = conn.cursor()
+
+    # Verificar que la venta existe
+    grupo = conn.execute("SELECT * FROM ventas_grupos WHERE id=?", (grupo_id,)).fetchone()
+    if not grupo:
+        conn.close()
+        return jsonify({"error": "Venta no encontrada"}), 404
+
+    monto_devuelto = sum(float(i.get("precio",0)) * int(i.get("cantidad",1)) for i in items)
+
+    # Crear registro de devolución
+    cur.execute("""INSERT INTO devoluciones
+                   (grupo_id, motivo, tipo, monto, notas, fecha)
+                   VALUES (?,?,?,?,?,?)""",
+                (grupo_id, motivo, tipo, monto_devuelto, notas,
+                 lima_now().strftime("%Y-%m-%d %H:%M:%S")))
+    dev_id = cur.lastrowid
+
+    # Revertir stock por cada item devuelto
+    for item in items:
+        pid  = int(item.get("producto_id", 0))
+        cant = int(item.get("cantidad", 1))
+        if pid:
+            cur.execute("UPDATE skus SET stock = stock + ? WHERE id=?", (cant, pid))
+            cur.execute("""INSERT INTO devolucion_items
+                           (devolucion_id, producto_id, cantidad, precio)
+                           VALUES (?,?,?,?)""",
+                        (dev_id, pid, cant, float(item.get("precio",0))))
+
+    # Marcar venta como devuelta parcial o total
+    cur.execute("UPDATE ventas_grupos SET tiene_devolucion=1 WHERE id=?", (grupo_id,))
+
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "devolucion_id": dev_id, "monto": monto_devuelto})
+
+@app.route("/api/devolucion/<int:did>")
+def api_devolucion_detalle(did):
+    conn = get_db()
+    d    = conn.execute("SELECT * FROM devoluciones WHERE id=?", (did,)).fetchone()
+    items= conn.execute("SELECT di.*, s.nombre, s.color, s.talla FROM devolucion_items di LEFT JOIN skus s ON di.producto_id=s.id WHERE di.devolucion_id=?", (did,)).fetchall()
+    conn.close()
+    if not d:
+        return jsonify({"error": "No encontrado"}), 404
+    return jsonify({"devolucion": dict(d), "items": [dict(i) for i in items]})
+
+
+@app.route("/api/ventas_grupos_detalle/<int:gid>")
+def api_ventas_grupos_detalle(gid):
+    conn  = get_db()
+    grupo = conn.execute("SELECT * FROM ventas_grupos WHERE id=?", (gid,)).fetchone()
+    if not grupo:
+        conn.close()
+        return jsonify({"error": "No encontrado"}), 404
+    ventas = conn.execute("""
+        SELECT v.*, s.nombre, s.color, s.talla, s.precio as precio_lista
+        FROM ventas v
+        LEFT JOIN skus s ON v.producto_id = s.id
+        WHERE v.grupo_id=?
+    """, (gid,)).fetchall()
+    conn.close()
+    return jsonify({
+        "grupo": dict(grupo),
+        "items": [dict(v) for v in ventas]
+    })
+
 @app.route("/api/ventas_grupos")
 def api_ventas_grupos():
     desde    = request.args.get("desde", "")
@@ -2141,6 +2454,29 @@ def api_venta_manual():
                      precio_pagado, cant, canal,
                      grupo_id, descuento_pct, descuento_motivo, desc_monto_item,
                      lima_now().strftime("%Y-%m-%d %H:%M:%S"), is_training))
+
+    # Auto-crear despacho si tiene courier de envío
+    if courier and courier not in ('Presencial', ''):
+        cur.execute("""INSERT INTO despachos
+                       (nombre_cliente,telefono,canal,referencia,courier,distrito,ciudad,
+                        direccion,tipo_pago,fecha_entrega,notas,fecha)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (nombre_cliente, telefono, canal, f"Venta #{grupo_id}",
+                     courier, distrito, ciudad, direccion,
+                     tipo_pago, fecha_entrega, comentarios,
+                     lima_now().strftime("%Y-%m-%d %H:%M:%S")))
+        despacho_id = cur.lastrowid
+        # Agregar items al despacho
+        for item in items:
+            pid  = item.get("producto_id")
+            cant = int(item.get("cantidad", 1))
+            prod = cur.execute("SELECT * FROM skus WHERE id=?", (pid,)).fetchone()
+            if prod:
+                cur.execute("""INSERT INTO despacho_items
+                               (despacho_id,producto_id,ean13,nombre,color,talla,cantidad)
+                               VALUES (?,?,?,?,?,?,?)""",
+                            (despacho_id, pid, prod["codigo_barras"],
+                             prod["nombre"], prod["color"], prod["talla"], cant))
 
     conn.commit()
     conn.close()

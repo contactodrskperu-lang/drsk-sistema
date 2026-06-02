@@ -234,6 +234,7 @@ tr:hover td{background:var(--card)}
 .despacho-card.recoleccion{border-color:rgba(220,20,60,.3)}
 .desp-info{flex:1;min-width:180px}
 .desp-nombre{font-weight:800;font-size:.9rem;color:var(--text)}
+.desp-courier-tag{font-size:.75rem;color:var(--gray);margin-top:.2rem;display:flex;align-items:center;gap:.3rem;flex-wrap:wrap}
 .desp-meta{font-size:.72rem;color:var(--gray);margin-top:.15rem}
 .prog-bar{height:4px;background:var(--border);border-radius:99px;margin-top:.4rem;overflow:hidden}
 .prog-fill{height:100%;background:var(--ok);border-radius:99px;transition:width .3s}
@@ -376,6 +377,7 @@ tr:hover td{background:var(--card)}
       <button class="nav-sub-btn" id="nav-ajuste" onclick="showPage('ajuste')"><span class="nav-sub-icon">✏</span> Ajuste de Stock</button>
       <button class="nav-sub-btn" id="nav-conteo" onclick="showPage('conteo')"><span class="nav-sub-icon">🔢</span> Conteo</button>
       <button class="nav-sub-btn" id="nav-pedidos" onclick="showPage('pedidos')"><span class="nav-sub-icon">📥</span> Pedidos a Proveedor</button>
+      <button class="nav-sub-btn" id="nav-oc" onclick="showPage('oc')"><span class="nav-sub-icon">🛒</span> Órdenes de Compra</button>
     </div>
   </div>
 
@@ -787,33 +789,183 @@ tr:hover td{background:var(--card)}
   </div>
 </div>
 
+<!-- ══ ÓRDENES DE COMPRA ══ -->
+<div id="page-oc" class="page">
+  <div style="max-width:900px">
+
+    <!-- Header -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem;flex-wrap:wrap;gap:.5rem">
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+        <button class="btn btn-outline btn-sm" id="ocFiltro-todos" onclick="ocSetFiltro('')">Todas</button>
+        <button class="btn btn-outline btn-sm" id="ocFiltro-ORDEN" onclick="ocSetFiltro('ORDEN')">📋 Orden</button>
+        <button class="btn btn-outline btn-sm" id="ocFiltro-PRODUCCION_1" onclick="ocSetFiltro('PRODUCCION_1')">🔨 Prod. 1</button>
+        <button class="btn btn-outline btn-sm" id="ocFiltro-PRODUCCION_2" onclick="ocSetFiltro('PRODUCCION_2')">🎨 Prod. 2</button>
+        <button class="btn btn-outline btn-sm" id="ocFiltro-ACEPTADO" onclick="ocSetFiltro('ACEPTADO')">✅ Aceptado</button>
+        <button class="btn btn-outline btn-sm" id="ocFiltro-STOCK" onclick="ocSetFiltro('STOCK')">📦 En Stock</button>
+      </div>
+      <button class="btn btn-primary" onclick="ocNuevaOrden()">+ Nueva Orden</button>
+    </div>
+
+    <div id="ocLista"></div>
+  </div>
+</div>
+
+<!-- ══ MODAL NUEVA ORDEN DE COMPRA ══ -->
+<div class="modal-overlay" id="modalNuevaOC">
+  <div class="modal" style="max-width:600px">
+    <div class="modal-header">
+      <div class="modal-title">🛒 NUEVA ORDEN DE COMPRA</div>
+      <button class="modal-close" onclick="closeModal('modalNuevaOC')">×</button>
+    </div>
+    <div style="padding:1rem;max-height:70vh;overflow-y:auto">
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-bottom:.75rem">
+        <div class="form-group" style="margin-bottom:0">
+          <label>Proveedor</label>
+          <input type="text" id="ocProveedor" placeholder="Nombre del proveedor"/>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label>Forma de pago</label>
+          <select id="ocFormaPago">
+            <option value="contado">Contado</option>
+            <option value="50_50">50% adelanto / 50% entrega</option>
+            <option value="30_dias">A 30 días</option>
+            <option value="credito">Crédito proveedor</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-bottom:.75rem">
+        <div class="form-group" style="margin-bottom:0">
+          <label>Fecha estimada de llegada</label>
+          <input type="date" id="ocFechaEsperada"/>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label>Notas</label>
+          <input type="text" id="ocNotas" placeholder="Observaciones..."/>
+        </div>
+      </div>
+
+      <!-- Buscar productos -->
+      <div style="font-size:.72rem;font-weight:800;letter-spacing:1px;color:var(--gray);margin:.75rem 0 .4rem">PRODUCTOS A PEDIR</div>
+      <div style="display:flex;gap:.5rem;margin-bottom:.75rem">
+        <input type="text" id="ocBuscarProd" placeholder="Buscar por nombre o escanear EAN..." 
+               oninput="ocBuscarProducto(this.value)" style="flex:1"/>
+      </div>
+      <div id="ocSugerencias" style="margin-bottom:.75rem"></div>
+
+      <!-- Lista de items -->
+      <div id="ocItems" style="margin-bottom:.75rem"></div>
+
+      <!-- Total -->
+      <div style="background:var(--card);border-radius:8px;padding:.75rem;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-weight:700">Total orden:</span>
+        <span id="ocTotal" style="font-size:1.1rem;font-weight:800;color:var(--accent)">S/ 0</span>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modalNuevaOC')">Cancelar</button>
+      <button class="btn btn-primary" onclick="ocConfirmarOrden()">✓ Crear Orden</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL DETALLE OC ══ -->
+<div class="modal-overlay" id="modalDetalleOC">
+  <div class="modal" style="max-width:580px">
+    <div class="modal-header">
+      <div class="modal-title" id="ocDetalleTitle">ORDEN DE COMPRA</div>
+      <button class="modal-close" onclick="closeModal('modalDetalleOC')">×</button>
+    </div>
+    <div style="padding:1rem" id="ocDetalleBody"></div>
+    <div class="modal-footer" id="ocDetalleBtns"></div>
+  </div>
+</div>
+
 <!-- ══ DASHBOARD ══ -->
 <div id="page-dashboard" class="page">
-  <!-- Stats cards -->
-  <div class="stats-grid" id="statsGrid">
-    <div class="stat-card"><div class="label">Cargando…</div><div class="value">—</div></div>
+
+  <!-- Tabs dashboard -->
+  <div style="display:flex;gap:.5rem;margin-bottom:1.25rem;flex-wrap:wrap">
+    <button class="btn btn-primary btn-sm" id="dashTab-ventas" onclick="dashSetTab('ventas')">📊 Ventas</button>
+    <button class="btn btn-outline btn-sm" id="dashTab-inventario" onclick="dashSetTab('inventario')">📦 Inventario</button>
+    <button class="btn btn-outline btn-sm" id="dashTab-despachos" onclick="dashSetTab('despachos')">🚚 Despachos</button>
+    <button class="btn btn-outline btn-sm" id="dashTab-gastos" onclick="dashSetTab('gastos')">💸 Gastos</button>
   </div>
 
-  <!-- ROI por canal -->
-  <div style="font-size:.72rem;font-weight:800;letter-spacing:2px;color:var(--gray);text-transform:uppercase;margin-bottom:.75rem;margin-top:.5rem">ROI por canal (mes actual)</div>
-  <div class="roi-grid" id="roiGrid"></div>
-
-  <!-- Gráfico ventas mensuales -->
-  <div class="chart-wrap">
-    <div class="chart-title">Ventas mensuales por canal (S/)</div>
-    <canvas id="chartVentas" height="100"></canvas>
-  </div>
-
-  <!-- Gasto en publicidad -->
-  <div class="chart-wrap">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
-      <div class="chart-title" style="margin-bottom:0">Inversión en publicidad</div>
-      <button class="btn btn-outline btn-sm" onclick="openModal('modalNuevoGasto')">+ Registrar gasto</button>
+  <!-- TAB VENTAS -->
+  <div id="dashTab-ventas-content">
+    <!-- KPIs principales -->
+    <div class="stats-grid" id="statsGrid">
+      <div class="stat-card"><div class="label">Cargando…</div><div class="value">—</div></div>
     </div>
-    <div id="gastosLista"></div>
+
+    <!-- Periodo selector -->
+    <div style="display:flex;gap:.5rem;align-items:center;margin:1rem 0 .75rem">
+      <span style="font-size:.72rem;color:var(--gray);letter-spacing:1px;text-transform:uppercase">Ver período:</span>
+      <button class="btn btn-outline btn-sm" id="dashPer-semana" onclick="dashSetPeriodo('semana')">Esta semana</button>
+      <button class="btn btn-primary btn-sm" id="dashPer-mes" onclick="dashSetPeriodo('mes')">Este mes</button>
+      <button class="btn btn-outline btn-sm" id="dashPer-todo" onclick="dashSetPeriodo('todo')">Todo</button>
+    </div>
+
+    <!-- Canales -->
+    <div class="chart-wrap">
+      <div class="chart-title">Ventas por canal</div>
+      <div id="dashCanales"></div>
+    </div>
+
+    <!-- Top productos -->
+    <div class="chart-wrap">
+      <div class="chart-title">Top productos del mes</div>
+      <div id="dashTopProductos"></div>
+    </div>
+
+    <!-- Top distritos -->
+    <div class="chart-wrap">
+      <div class="chart-title">Top zonas de entrega</div>
+      <div id="dashTopDistritos"></div>
+    </div>
+
+    <!-- Métodos de pago -->
+    <div class="chart-wrap">
+      <div class="chart-title">Métodos de pago</div>
+      <div id="dashMetodosPago"></div>
+    </div>
+
+    <!-- Gráfico mensual -->
+    <div class="chart-wrap">
+      <div class="chart-title">Ventas mensuales por canal (S/)</div>
+      <canvas id="chartVentas" height="100"></canvas>
+    </div>
   </div>
 
-  <div id="alertasLista"></div>
+  <!-- TAB INVENTARIO -->
+  <div id="dashTab-inventario-content" style="display:none">
+    <div class="stats-grid" id="statsGridInv"></div>
+    <div id="alertasLista" style="margin-top:1rem"></div>
+  </div>
+
+  <!-- TAB DESPACHOS -->
+  <div id="dashTab-despachos-content" style="display:none">
+    <div class="stats-grid" id="statsGridDesp"></div>
+    <div id="dashDespLista" style="margin-top:1rem"></div>
+  </div>
+
+  <!-- TAB GASTOS -->
+  <div id="dashTab-gastos-content" style="display:none">
+    <div class="chart-wrap">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+        <div class="chart-title" style="margin-bottom:0">Inversión en publicidad</div>
+        <button class="btn btn-outline btn-sm" onclick="openModal('modalNuevoGasto')">+ Registrar gasto</button>
+      </div>
+      <div id="gastosLista"></div>
+    </div>
+    <div class="chart-wrap">
+      <div class="chart-title">ROI por canal (mes actual)</div>
+      <div class="roi-grid" id="roiGrid"></div>
+    </div>
+  </div>
+
 </div>
 
 <!-- ══ PEDIDOS VENTA ══ -->
@@ -1176,103 +1328,149 @@ tr:hover td{background:var(--card)}
         <label for="dcTieneDelivery" style="margin:0;cursor:pointer;font-size:.82rem;font-weight:600">Tiene delivery / envío</label>
       </div>
 
-      <!-- Dirección (condicional — solo courier) -->
+      <!-- Dirección (condicional) -->
       <div id="dcDireccionRow" style="display:none;margin-top:.75rem">
-        <!-- Distrito -->
-        <div class="form-group" style="margin-bottom:.75rem">
-          <label>Distrito <span id="dcEnvioCosto" style="color:var(--ok);font-weight:700;font-size:.8rem"></span></label>
-          <select id="dcDistrito" onchange="dcOnDistritoChange()" style="width:100%">
-            <option value="">— Selecciona distrito —</option>
-            <optgroup label="Lima (Dinsides)">
-              <option value="Ancón|17">Ancón — S/17</option>
-              <option value="Ate|12">Ate — S/12</option>
-              <option value="Barranco|10">Barranco — S/10</option>
-              <option value="Bellavista|12">Bellavista — S/12</option>
-              <option value="Breña|8">Breña — S/8</option>
-              <option value="Cajamarquilla|21">Cajamarquilla — S/21</option>
-              <option value="Callao|12">Callao — S/12</option>
-              <option value="Carabayllo|12">Carabayllo — S/12</option>
-              <option value="Carmen de la Legua Reynoso|12">Carmen de la Legua — S/12</option>
-              <option value="Cercado de Lima|10">Cercado de Lima — S/10</option>
-              <option value="Chaclacayo|17">Chaclacayo — S/17</option>
-              <option value="Chorrillos|12">Chorrillos — S/12</option>
-              <option value="Chosica|22">Chosica — S/22</option>
-              <option value="Cieneguilla|17">Cieneguilla — S/17</option>
-              <option value="Comas|12">Comas — S/12</option>
-              <option value="El Agustino|10">El Agustino — S/10</option>
-              <option value="El Márquez - Callao|12">El Márquez - Callao — S/12</option>
-              <option value="Huachipa|14">Huachipa — S/14</option>
-              <option value="Huaycan|12">Huaycan — S/12</option>
-              <option value="Independencia|12">Independencia — S/12</option>
-              <option value="Jesús María|10">Jesús María — S/10</option>
-              <option value="Jicamarca - Anexo 22|14">Jicamarca - Anexo 22 — S/14</option>
-              <option value="Jicamarca - Anexo 8|21">Jicamarca - Anexo 8 — S/21</option>
-              <option value="La Molina|10">La Molina — S/10</option>
-              <option value="La Perla|12">La Perla — S/12</option>
-              <option value="La Punta|12">La Punta — S/12</option>
-              <option value="La Victoria|10">La Victoria — S/10</option>
-              <option value="Lince|10">Lince — S/10</option>
-              <option value="Los Olivos|12">Los Olivos — S/12</option>
-              <option value="Lurigancho - Chosica|14">Lurigancho - Chosica — S/14</option>
-              <option value="Lurin|14">Lurín — S/14</option>
-              <option value="Magdalena del Mar|10">Magdalena del Mar — S/10</option>
-              <option value="Manchay|17">Manchay — S/17</option>
-              <option value="Mi Perú|12">Mi Perú — S/12</option>
-              <option value="Miraflores|10">Miraflores — S/10</option>
-              <option value="Pachacamac|19">Pachacamac — S/19</option>
-              <option value="Pucusana|28">Pucusana — S/28</option>
-              <option value="Pueblo Libre|10">Pueblo Libre — S/10</option>
-              <option value="Puente Piedra|12">Puente Piedra — S/12</option>
-              <option value="Punta Hermosa|17">Punta Hermosa — S/17</option>
-              <option value="Punta Negra|21">Punta Negra — S/21</option>
-              <option value="Ricardo Palma|25">Ricardo Palma — S/25</option>
-              <option value="Rímac|10">Rímac — S/10</option>
-              <option value="Salamanca Ate|10">Salamanca Ate — S/10</option>
-              <option value="San Bartolo|22">San Bartolo — S/22</option>
-              <option value="San Borja|10">San Borja — S/10</option>
-              <option value="San Isidro|10">San Isidro — S/10</option>
-              <option value="San Juan de Lurigancho|10">San Juan de Lurigancho — S/10</option>
-              <option value="San Juan de Miraflores|12">San Juan de Miraflores — S/12</option>
-              <option value="San Luis|10">San Luis — S/10</option>
-              <option value="San Martín de Porres|12">San Martín de Porres — S/12</option>
-              <option value="San Miguel|10">San Miguel — S/10</option>
-              <option value="Santa Anita|10">Santa Anita — S/10</option>
-              <option value="Santa Clara - Ate|12">Santa Clara - Ate — S/12</option>
-              <option value="Santa Eulalia|25">Santa Eulalia — S/25</option>
-              <option value="Santa María del Mar|25">Santa María del Mar — S/25</option>
-              <option value="Santa Rosa|17">Santa Rosa — S/17</option>
-              <option value="Santiago de Surco|10">Santiago de Surco — S/10</option>
-              <option value="Surquillo|10">Surquillo — S/10</option>
-              <option value="Ventanilla|12">Ventanilla — S/12</option>
-              <option value="Villa El Salvador|12">Villa El Salvador — S/12</option>
-              <option value="Villa María del Triunfo|12">Villa María del Triunfo — S/12</option>
-            </optgroup>
-            <optgroup label="Provincia (Olva / Shalom)">
-              <option value="__provincia__|0">Provincia — ingresar ciudad</option>
+
+        <!-- Departamento -->
+        <div class="form-group" style="margin-bottom:.6rem">
+          <label>Departamento</label>
+          <select id="dcDepartamento" onchange="dcOnDeptoChange()" style="width:100%">
+            <option value="">— Selecciona departamento —</option>
+            <option value="Lima">Lima</option>
+            <optgroup label="Otros departamentos">
+              <option value="Amazonas">Amazonas</option>
+              <option value="Áncash">Áncash</option>
+              <option value="Apurímac">Apurímac</option>
+              <option value="Arequipa">Arequipa</option>
+              <option value="Ayacucho">Ayacucho</option>
+              <option value="Cajamarca">Cajamarca</option>
+              <option value="Callao">Callao</option>
+              <option value="Cusco">Cusco</option>
+              <option value="Huancavelica">Huancavelica</option>
+              <option value="Huánuco">Huánuco</option>
+              <option value="Ica">Ica</option>
+              <option value="Junín">Junín</option>
+              <option value="La Libertad">La Libertad</option>
+              <option value="Lambayeque">Lambayeque</option>
+              <option value="Loreto">Loreto</option>
+              <option value="Madre de Dios">Madre de Dios</option>
+              <option value="Moquegua">Moquegua</option>
+              <option value="Pasco">Pasco</option>
+              <option value="Piura">Piura</option>
+              <option value="Puno">Puno</option>
+              <option value="San Martín">San Martín</option>
+              <option value="Tacna">Tacna</option>
+              <option value="Tumbes">Tumbes</option>
+              <option value="Ucayali">Ucayali</option>
             </optgroup>
           </select>
         </div>
-        <!-- Ciudad + Courier info -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-bottom:.75rem">
-          <div class="form-group" style="margin-bottom:0">
-            <label>Ciudad</label>
-            <input type="text" id="dcCiudad" placeholder="Ej: Lima" readonly style="background:var(--card);cursor:default"/>
+
+        <!-- Ciudad (solo para Lima no-Lima o provincia) -->
+        <div class="form-group" id="dcCiudadRow" style="margin-bottom:.6rem;display:none">
+          <label id="dcCiudadLabel">Ciudad / Provincia</label>
+          <input type="text" id="dcCiudad" placeholder="Ej: Cañete, Huaral..."/>
+        </div>
+
+        <!-- Distrito (solo Lima ciudad) -->
+        <div class="form-group" id="dcDistritoRow" style="margin-bottom:.6rem;display:none">
+          <label>Distrito <span id="dcEnvioCosto" style="color:var(--ok);font-weight:700;font-size:.8rem"></span></label>
+          <select id="dcDistrito" onchange="dcOnDistritoChange()" style="width:100%">
+            <option value="">— Selecciona distrito —</option>
+            <option value="Ancón|17">Ancón — S/17</option>
+            <option value="Ate|12">Ate — S/12</option>
+            <option value="Barranco|10">Barranco — S/10</option>
+            <option value="Bellavista|12">Bellavista — S/12</option>
+            <option value="Breña|8">Breña — S/8</option>
+            <option value="Cajamarquilla|21">Cajamarquilla — S/21</option>
+            <option value="Callao|12">Callao — S/12</option>
+            <option value="Carabayllo|12">Carabayllo — S/12</option>
+            <option value="Carmen de la Legua|12">Carmen de la Legua — S/12</option>
+            <option value="Cercado de Lima|10">Cercado de Lima — S/10</option>
+            <option value="Chaclacayo|17">Chaclacayo — S/17</option>
+            <option value="Chorrillos|12">Chorrillos — S/12</option>
+            <option value="Chosica|22">Chosica — S/22</option>
+            <option value="Cieneguilla|17">Cieneguilla — S/17</option>
+            <option value="Comas|12">Comas — S/12</option>
+            <option value="El Agustino|10">El Agustino — S/10</option>
+            <option value="El Márquez - Callao|12">El Márquez - Callao — S/12</option>
+            <option value="Huachipa|14">Huachipa — S/14</option>
+            <option value="Huaycan|12">Huaycan — S/12</option>
+            <option value="Independencia|12">Independencia — S/12</option>
+            <option value="Jesús María|10">Jesús María — S/10</option>
+            <option value="Jicamarca - Anexo 22|14">Jicamarca - Anexo 22 — S/14</option>
+            <option value="Jicamarca - Anexo 8|21">Jicamarca - Anexo 8 — S/21</option>
+            <option value="La Molina|10">La Molina — S/10</option>
+            <option value="La Perla|12">La Perla — S/12</option>
+            <option value="La Punta|12">La Punta — S/12</option>
+            <option value="La Victoria|10">La Victoria — S/10</option>
+            <option value="Lince|10">Lince — S/10</option>
+            <option value="Los Olivos|12">Los Olivos — S/12</option>
+            <option value="Lurigancho - Chosica|14">Lurigancho - Chosica — S/14</option>
+            <option value="Lurín|14">Lurín — S/14</option>
+            <option value="Magdalena del Mar|10">Magdalena del Mar — S/10</option>
+            <option value="Manchay|17">Manchay — S/17</option>
+            <option value="Mi Perú|12">Mi Perú — S/12</option>
+            <option value="Miraflores|10">Miraflores — S/10</option>
+            <option value="Pachacamac|19">Pachacamac — S/19</option>
+            <option value="Pucusana|28">Pucusana — S/28</option>
+            <option value="Pueblo Libre|10">Pueblo Libre — S/10</option>
+            <option value="Puente Piedra|12">Puente Piedra — S/12</option>
+            <option value="Punta Hermosa|17">Punta Hermosa — S/17</option>
+            <option value="Punta Negra|21">Punta Negra — S/21</option>
+            <option value="Ricardo Palma|25">Ricardo Palma — S/25</option>
+            <option value="Rímac|10">Rímac — S/10</option>
+            <option value="Salamanca Ate|10">Salamanca Ate — S/10</option>
+            <option value="San Bartolo|22">San Bartolo — S/22</option>
+            <option value="San Borja|10">San Borja — S/10</option>
+            <option value="San Isidro|10">San Isidro — S/10</option>
+            <option value="San Juan de Lurigancho|10">San Juan de Lurigancho — S/10</option>
+            <option value="San Juan de Miraflores|12">San Juan de Miraflores — S/12</option>
+            <option value="San Luis|10">San Luis — S/10</option>
+            <option value="San Martín de Porres|12">San Martín de Porres — S/12</option>
+            <option value="San Miguel|10">San Miguel — S/10</option>
+            <option value="Santa Anita|10">Santa Anita — S/10</option>
+            <option value="Santa Clara - Ate|12">Santa Clara - Ate — S/12</option>
+            <option value="Santa Eulalia|25">Santa Eulalia — S/25</option>
+            <option value="Santa María del Mar|25">Santa María del Mar — S/25</option>
+            <option value="Santa Rosa|17">Santa Rosa — S/17</option>
+            <option value="Santiago de Surco|10">Santiago de Surco — S/10</option>
+            <option value="Surquillo|10">Surquillo — S/10</option>
+            <option value="Ventanilla|12">Ventanilla — S/12</option>
+            <option value="Villa El Salvador|12">Villa El Salvador — S/12</option>
+            <option value="Villa María del Triunfo|12">Villa María del Triunfo — S/12</option>
+          </select>
+          <!-- Olva Lima alternativa -->
+          <div id="dcOlvaLimaOpt" style="display:none;margin-top:.4rem">
+            <label style="display:flex;align-items:center;gap:.4rem;font-size:.78rem;cursor:pointer">
+              <input type="checkbox" id="dcUsarOlvaLima" onchange="dcToggleOlvaLima(this.checked)"/>
+              Usar Olva Courier Lima en su lugar (S/6, 2 días, previo pago)
+            </label>
           </div>
-          <div class="form-group" style="margin-bottom:0">
-            <label>Courier</label>
-            <div style="display:flex;align-items:center;gap:.5rem">
-              <input type="text" id="dcCourierDisplay" readonly style="background:var(--card);cursor:default;flex:1;width:100%"/>
-              <select id="dcCourierProv" style="display:none;flex:1;width:100%" onchange="dcOnCourierProvChange()">
+        </div>
+
+        <!-- Courier info -->
+        <div id="dcCourierRow" style="display:none;margin-bottom:.6rem">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
+            <div class="form-group" style="margin-bottom:0">
+              <label>Courier</label>
+              <input type="text" id="dcCourierDisplay" readonly style="background:var(--card);cursor:default"/>
+              <select id="dcCourierProv" style="display:none;width:100%;margin-top:.2rem" onchange="dcOnCourierProvChange()">
                 <option value="Olva">Olva Courier</option>
                 <option value="Shalom">Shalom</option>
               </select>
             </div>
+            <div class="form-group" style="margin-bottom:0">
+              <label>Costo envío al cliente</label>
+              <input type="text" id="dcCostoEnvio" readonly style="background:var(--card);cursor:default;font-weight:700;color:var(--ok)"/>
+            </div>
           </div>
         </div>
+
         <!-- Dirección -->
         <div class="form-group" style="margin-bottom:0">
-          <label>Dirección</label>
-          <input type="text" id="dcDireccion" placeholder="Ej: Av. Larco 123"/>
+          <label>Dirección exacta</label>
+          <input type="text" id="dcDireccion" placeholder="Ej: Av. Larco 123, Piso 3"/>
         </div>
       </div>
 
@@ -1942,7 +2140,7 @@ const pageTitles = {
   vender:'⚡ VENTA MANUAL', inventario:'📦 INVENTARIO',
   ventas:'📊 HISTORIAL DE VENTAS', etiquetas:'🏷 ETIQUETAS',
   ajuste:'✏ AJUSTE DE STOCK', pedidos:'📥 PEDIDOS A PROVEEDOR',
-  conteo:'🔢 CONTEO DE INVENTARIO', dashboard:'📊 DASHBOARD',
+  conteo:'🔢 CONTEO DE INVENTARIO', dashboard:'📊 DASHBOARD', oc:'🛒 ÓRDENES DE COMPRA',
   defectos:'⚠ DEFECTOS DE FÁBRICA', despachos:'🚚 DESPACHOS',
   pv:'🛍 PEDIDOS DE VENTA', tutoriales:'📚 TUTORIALES'
 };
@@ -1963,6 +2161,7 @@ function showPage(name){
   if(name==='defectos')   loadDefectos();
   if(name==='despachos')  { salirRecoleccion(); loadDespachos(); }
   if(name==='dashboard')  loadDashboard();
+  if(name==='oc')          loadOC();
   if(name==='pv')         loadPV();
   if(name==='conteo')     { cargarHistorialConteos(); if(conteoState) $('conteoScanInput').focus(); }
 }
@@ -2278,6 +2477,7 @@ function confirmarTicket(){
   if($('dcEnvioCosto')) $('dcEnvioCosto').textContent='';
   if($('dcCourierProv')){ $('dcCourierProv').style.display='none'; }
   if($('dcTieneDelivery')) $('dcTieneDelivery').checked = false;
+  dcResetDelivery();
   $('dcFactura').checked    = false;
   $('dcRuc').value          = '';
   $('dcRazonSocial').value  = '';
@@ -2288,58 +2488,93 @@ function confirmarTicket(){
 }
 
 function dcOnCanalChange(){
-  // Canal ya no controla comision ni courier — se maneja por distrito
+  // Canal no controla courier — se maneja por departamento/distrito
 }
 
 function dcToggleDelivery(){
   const tiene = $('dcTieneDelivery').checked;
   $('dcDireccionRow').style.display = tiene ? 'block' : 'none';
-  if(!tiene){
-    $('dcDistrito').value='';
-    $('dcCiudad').value='';
-    $('dcDireccion').value='';
-    $('dcCourierDisplay').value='';
-    $('dcEnvioCosto').textContent='';
-    $('dcCourier').value='Presencial';
-    $('dcCourierProv').style.display='none';
+  if(!tiene) dcResetDelivery();
+}
+
+function dcResetDelivery(){
+  if($('dcDepartamento')) $('dcDepartamento').value='';
+  if($('dcDistrito'))     $('dcDistrito').value='';
+  if($('dcCiudad'))       $('dcCiudad').value='';
+  if($('dcDireccion'))    $('dcDireccion').value='';
+  if($('dcCourierDisplay')) $('dcCourierDisplay').value='';
+  if($('dcCostoEnvio'))   $('dcCostoEnvio').value='';
+  if($('dcEnvioCosto'))   $('dcEnvioCosto').textContent='';
+  $('dcCourier').value='Presencial';
+  if($('dcDistritoRow'))  $('dcDistritoRow').style.display='none';
+  if($('dcCiudadRow'))    $('dcCiudadRow').style.display='none';
+  if($('dcCourierRow'))   $('dcCourierRow').style.display='none';
+  if($('dcCourierProv'))  $('dcCourierProv').style.display='none';
+  if($('dcOlvaLimaOpt'))  $('dcOlvaLimaOpt').style.display='none';
+  if($('dcUsarOlvaLima')) $('dcUsarOlvaLima').checked=false;
+}
+
+function dcOnDeptoChange(){
+  const depto = $('dcDepartamento').value;
+  dcResetDelivery();
+  $('dcDepartamento').value = depto; // restaurar selección
+  $('dcDireccionRow').style.display = 'block';
+
+  if(!depto) return;
+
+  if(depto === 'Lima'){
+    // Lima ciudad → mostrar distritos Dinsides
+    $('dcDistritoRow').style.display = 'block';
+    $('dcCiudadRow').style.display   = 'none';
+    $('dcCourierRow').style.display  = 'none';
+  } else {
+    // Provincia → ciudad editable + Olva por defecto
+    $('dcDistritoRow').style.display = 'none';
+    $('dcCiudadRow').style.display   = 'block';
+    $('dcCiudadLabel').textContent   = 'Ciudad / Provincia';
+    $('dcCiudad').placeholder        = 'Ej: Trujillo, Arequipa...';
+    $('dcCourierRow').style.display  = 'block';
+    $('dcCourierDisplay').value      = 'Olva Courier';
+    $('dcCourierProv').style.display = 'block';
+    $('dcCourier').value             = 'Olva';
+    $('dcCostoEnvio').value          = 'Se calcula con API Olva';
   }
 }
 
 function dcOnDistritoChange(){
   const val = $('dcDistrito').value;
-  if(!val){ 
-    $('dcCiudad').value=''; 
-    $('dcCourierDisplay').value='';
-    $('dcCourier').value='Presencial';
-    $('dcEnvioCosto').textContent='';
-    $('dcCourierProv').style.display='none';
-    $('dcCourierDisplay').style.display='block';
-    return; 
-  }
-  if(val === '__provincia__|0'){
-    // Provincia
-    $('dcCiudad').value='';
-    $('dcCiudad').readOnly=false;
-    $('dcCiudad').style.background='';
-    $('dcCiudad').style.cursor='';
-    $('dcCiudad').placeholder='Ej: Trujillo';
-    $('dcCourierDisplay').style.display='none';
-    $('dcCourierProv').style.display='block';
-    $('dcCourier').value='Olva';
-    $('dcEnvioCosto').textContent='';
+  $('dcOlvaLimaOpt').style.display = 'none';
+  $('dcUsarOlvaLima').checked = false;
+  $('dcCourierRow').style.display = 'none';
+  if(!val) return;
+
+  const parts = val.split('|');
+  const costoCliente = Math.max(0, parseInt(parts[1]) - 5);
+  $('dcCourier').value         = 'Dinsides';
+  $('dcCourierDisplay').value  = 'Dinsides';
+  $('dcCourierProv').style.display = 'none';
+  $('dcCostoEnvio').value      = `S/ ${costoCliente} (cliente)`;
+  $('dcEnvioCosto').textContent= `· S/${costoCliente} al cliente`;
+  $('dcCourierRow').style.display = 'block';
+  $('dcOlvaLimaOpt').style.display = 'block';
+}
+
+function dcToggleOlvaLima(usar){
+  if(usar){
+    $('dcCourier').value        = 'Olva';
+    $('dcCourierDisplay').value = 'Olva Courier';
+    $('dcCostoEnvio').value     = 'S/ 6 (2 días, previo pago)';
+    $('dcEnvioCosto').textContent = '· S/6 Olva (2 días)';
   } else {
-    const parts = val.split('|');
-    const distrito = parts[0];
-    const costo = parts[1];
-    $('dcCiudad').value='Lima';
-    $('dcCiudad').readOnly=true;
-    $('dcCiudad').style.background='var(--card)';
-    $('dcCiudad').style.cursor='default';
-    $('dcCourierDisplay').value='Dinsides';
-    $('dcCourierDisplay').style.display='block';
-    $('dcCourierProv').style.display='none';
-    $('dcCourier').value='Dinsides';
-    $('dcEnvioCosto').textContent=`· Envío S/${costo}`;
+    // Volver a Dinsides
+    const val = $('dcDistrito').value;
+    if(val){
+      const costo = Math.max(0, parseInt(val.split('|')[1]) - 5);
+      $('dcCourier').value        = 'Dinsides';
+      $('dcCourierDisplay').value = 'Dinsides';
+      $('dcCostoEnvio').value     = `S/ ${costo} (cliente)`;
+      $('dcEnvioCosto').textContent = `· S/${costo} al cliente`;
+    }
   }
 }
 
@@ -2348,9 +2583,7 @@ function dcOnCourierProvChange(){
 }
 
 function dcOnCourierChange(){
-  const courier = $('dcCourier').value;
-  const necesitaDireccion = ['Dinsides','Olva','Shalom'].includes(courier);
-  $('dcDireccionRow').style.display = necesitaDireccion ? 'block' : 'none';
+  // Ya no se usa directamente
 }
 
 function dcOnFacturaChange(){
@@ -2368,6 +2601,7 @@ async function submitTicket(){
     const distritoRaw    = $('dcDistrito')?.value || '';
     const distrito       = distritoRaw.includes('|') ? distritoRaw.split('|')[0] : distritoRaw;
     const ciudad         = $('dcCiudad')?.value.trim() || '';
+    const departamento   = $('dcDepartamento')?.value || '';
     const direccion      = $('dcDireccion')?.value.trim() || '';
     const comision_pct   = parseFloat($('dcComision')?.value) || 0;
     const factura        = $('dcFactura')?.checked || false;
@@ -2729,6 +2963,7 @@ async function loadVentas(){
         <div class="vg-price">
           <div class="vg-price-val ${priceClass}">S/ ${gt.toFixed(0)}</div>
           ${tieneInfo ? `<button class="vg-masinfo-btn" onclick="event.stopPropagation();this.closest('.vg-card').querySelector('.vg-masinfo').classList.toggle('open');this.textContent=this.textContent==='+ más info'?'− menos':'+ más info'">+ más info</button>` : ''}
+          ${!g.es_training ? `<button class="vg-masinfo-btn" style="color:var(--bajo);border-color:var(--bajo)" onclick="event.stopPropagation();abrirDevolucion(${g.grupo_id})">↩ Devolución</button>` : ''}
         </div>
       </div>
       ${masInfoHtml}
@@ -3133,8 +3368,8 @@ function limpiarColaImpresion(){
   if(!confirm(`¿Limpiar toda la cola de impresión?\n\n${total} etiqueta${total!==1?'s':''} serán eliminadas de la vista previa.`)) return;
   gridItems=[];
   gridExcluidas=new Set();
-  closeModal('modalGridMasivo');
-  toast('Cola de impresión limpiada');
+  toast('🗑 Cola de impresión limpiada');
+  setTimeout(()=>closeModal('modalGridMasivo'), 900);
 }
 
 async function abrirMasivoCategoria(){
@@ -3533,6 +3768,307 @@ async function cargarHistorialConteos(){
       </div>`).join('')}`;
 }
 
+
+
+/* ── ÓRDENES DE COMPRA ── */
+let _ocItems   = [];
+let _ocFiltro  = '';
+let _ocSearch  = [];
+
+const OC_ESTADOS = {
+  'ORDEN':        {label:'Orden creada',      icon:'📋', color:'#3b82f6'},
+  'PRODUCCION_1': {label:'En producción',     icon:'🔨', color:'#f59e0b'},
+  'PRODUCCION_2': {label:'Acabado/Detalle',   icon:'🎨', color:'#8b5cf6'},
+  'ACEPTADO':     {label:'Aceptado-Almacén',  icon:'✅', color:'#16a34a'},
+  'RECHAZADO':    {label:'Rechazado',         icon:'❌', color:'#dc143c'},
+  'STOCK':        {label:'En inventario',     icon:'📦', color:'#6b7280'},
+  'CANCELADO':    {label:'Cancelado',         icon:'🚫', color:'#6b7280'},
+};
+
+const OC_SIGUIENTE = {
+  'ORDEN':        'PRODUCCION_1',
+  'PRODUCCION_1': 'PRODUCCION_2',
+  'PRODUCCION_2': 'ACEPTADO',
+  'ACEPTADO':     'STOCK',
+};
+
+function ocSetFiltro(f){
+  _ocFiltro = f;
+  document.querySelectorAll('[id^="ocFiltro-"]').forEach(b=>{
+    b.className = b.id === `ocFiltro-${f||'todos'}` ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm';
+  });
+  loadOC();
+}
+
+async function loadOC(){
+  const url = _ocFiltro ? `/api/ordenes_compra?estado=${_ocFiltro}` : '/api/ordenes_compra';
+  const rows = await api(url);
+  if(!rows || rows.error){ $('ocLista').innerHTML='<p style="color:var(--gray)">Error cargando órdenes</p>'; return; }
+  if(!rows.length){ $('ocLista').innerHTML='<p style="color:var(--gray);font-size:.85rem">No hay órdenes en este estado</p>'; return; }
+
+  $('ocLista').innerHTML = rows.map(oc=>{
+    const est = OC_ESTADOS[oc.estado] || {label:oc.estado, icon:'📋', color:'#888'};
+    const sig = OC_SIGUIENTE[oc.estado];
+    return `<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:1rem;margin-bottom:.75rem">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:.5rem">
+        <div>
+          <div style="font-weight:800;font-size:.9rem">${est.icon} OC #${oc.id} ${oc.proveedor?'· '+oc.proveedor:''}</div>
+          <div style="font-size:.78rem;color:var(--gray);margin-top:.2rem">
+            ${oc.forma_pago} · S/${oc.monto_total.toFixed(0)} · ${oc.fecha.substring(0,10)}
+            ${oc.fecha_esperada?` · Llega: ${oc.fecha_esperada}`:''}
+          </div>
+          ${oc.notas?`<div style="font-size:.75rem;color:var(--gray);margin-top:.2rem">💬 ${oc.notas}</div>`:''}
+        </div>
+        <div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap">
+          <span style="font-size:.72rem;font-weight:700;color:${est.color};background:${est.color}22;border:1px solid ${est.color}44;border-radius:4px;padding:.2rem .5rem">${est.label}</span>
+          <button class="btn btn-outline btn-sm" onclick="ocVerDetalle(${oc.id})">Ver</button>
+          ${sig?`<button class="btn btn-primary btn-sm" onclick="ocAvanzarEstado(${oc.id},'${sig}')">→ ${OC_ESTADOS[sig].icon} ${OC_ESTADOS[sig].label}</button>`:''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function ocVerDetalle(oid){
+  const data = await api(`/api/orden_compra/${oid}`);
+  if(!data || data.error){ toast('Error','error'); return; }
+  const oc  = data.orden;
+  const est = OC_ESTADOS[oc.estado] || {label:oc.estado, icon:'📋'};
+  const sig = OC_SIGUIENTE[oc.estado];
+
+  $('ocDetalleTitle').textContent = `${est.icon} OC #${oc.id}`;
+  $('ocDetalleBody').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-bottom:.75rem;font-size:.82rem">
+      <div><span style="color:var(--gray)">Proveedor:</span> <strong>${oc.proveedor||'—'}</strong></div>
+      <div><span style="color:var(--gray)">Pago:</span> <strong>${oc.forma_pago}</strong></div>
+      <div><span style="color:var(--gray)">Total:</span> <strong>S/ ${oc.monto_total.toFixed(0)}</strong></div>
+      <div><span style="color:var(--gray)">Estado:</span> <strong>${est.label}</strong></div>
+      ${oc.fecha_esperada?`<div><span style="color:var(--gray)">Llega:</span> <strong>${oc.fecha_esperada}</strong></div>`:''}
+    </div>
+    <div style="font-size:.72rem;color:var(--gray);letter-spacing:1px;margin-bottom:.4rem">PRODUCTOS</div>
+    ${data.items.map(it=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:.4rem .5rem;background:var(--bg);border-radius:6px;margin-bottom:.3rem;font-size:.82rem">
+        <span>${it.nombre} ${it.color} — T.${it.talla}</span>
+        <span style="color:var(--gray)">x${it.cantidad} · S/${(it.costo_unit*it.cantidad).toFixed(0)}</span>
+      </div>`).join('')}`;
+
+  $('ocDetalleBtns').innerHTML = `
+    <button class="btn btn-outline" onclick="closeModal('modalDetalleOC')">Cerrar</button>
+    ${sig?`<button class="btn btn-primary" onclick="ocAvanzarEstado(${oc.id},'${sig}');closeModal('modalDetalleOC')">→ ${OC_ESTADOS[sig].icon} Pasar a ${OC_ESTADOS[sig].label}</button>`:''}
+    ${oc.estado==='ORDEN'?`<button class="btn btn-outline" style="color:var(--red);border-color:var(--red)" onclick="if(confirm('¿Cancelar esta orden?'))ocCancelar(${oc.id})">Cancelar orden</button>`:''}`;
+
+  openModal('modalDetalleOC');
+}
+
+async function ocAvanzarEstado(oid, estado){
+  if(!confirm(`¿Pasar al estado: ${OC_ESTADOS[estado].label}?`)) return;
+  const res = await api(`/api/orden_compra/${oid}/estado`,'PUT',{estado});
+  if(res.ok){
+    toast(`${OC_ESTADOS[estado].icon} ${OC_ESTADOS[estado].label}`);
+    loadOC();
+  }
+}
+
+async function ocCancelar(oid){
+  const res = await api(`/api/orden_compra/${oid}`,'DELETE');
+  if(res.ok){ toast('Orden cancelada'); closeModal('modalDetalleOC'); loadOC(); }
+}
+
+function ocNuevaOrden(){
+  _ocItems = [];
+  $('ocProveedor').value = '';
+  $('ocNotas').value     = '';
+  $('ocBuscarProd').value= '';
+  $('ocSugerencias').innerHTML = '';
+  $('ocFormaPago').value = 'contado';
+  renderOCItems();
+  openModal('modalNuevaOC');
+}
+
+let _ocSearchTimeout = null;
+async function ocBuscarProducto(q){
+  clearTimeout(_ocSearchTimeout);
+  if(!q || q.length < 2){ $('ocSugerencias').innerHTML=''; return; }
+  _ocSearchTimeout = setTimeout(async()=>{
+    const res = await api(`/api/productos?q=${encodeURIComponent(q)}&limit=8`);
+    if(!res || !res.length){ $('ocSugerencias').innerHTML='<p style="font-size:.78rem;color:var(--gray)">Sin resultados</p>'; return; }
+    $('ocSugerencias').innerHTML = `<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;overflow:hidden">
+      ${res.map(p=>`<div style="padding:.5rem .75rem;cursor:pointer;font-size:.82rem;border-bottom:1px solid var(--border)" 
+          onclick="ocAgregarProducto(${JSON.stringify(p).replace(/"/g,'&quot;')})"
+          onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''">
+        ${p.nombre} ${p.color} — T.${p.talla} <span style="color:var(--gray)">· Stock: ${p.stock} · Costo: S/${p.costo||0}</span>
+      </div>`).join('')}
+    </div>`;
+  }, 300);
+}
+
+function ocAgregarProducto(p){
+  _ocItems.push({
+    producto_id: p.id,
+    ean13: p.codigo_barras||'',
+    nombre: p.nombre,
+    color: p.color,
+    talla: p.talla,
+    cantidad: 1,
+    costo_unit: p.costo||0
+  });
+  $('ocBuscarProd').value = '';
+  $('ocSugerencias').innerHTML = '';
+  renderOCItems();
+}
+
+function ocQuitarItem(idx){
+  _ocItems.splice(idx,1);
+  renderOCItems();
+}
+
+function ocUpdateItem(idx, field, val){
+  _ocItems[idx][field] = field==='cantidad'||field==='costo_unit' ? parseFloat(val)||0 : val;
+  renderOCItems();
+}
+
+function renderOCItems(){
+  if(!_ocItems.length){
+    $('ocItems').innerHTML='<p style="font-size:.78rem;color:var(--gray)">Agrega productos con el buscador arriba</p>';
+    $('ocTotal').textContent='S/ 0';
+    return;
+  }
+  let total = 0;
+  $('ocItems').innerHTML = _ocItems.map((it,i)=>{
+    const sub = it.costo_unit * it.cantidad;
+    total += sub;
+    return `<div style="display:grid;grid-template-columns:1fr auto auto auto;gap:.4rem;align-items:center;padding:.4rem .5rem;background:var(--bg);border-radius:6px;margin-bottom:.3rem;font-size:.82rem">
+      <span>${it.nombre} ${it.color} T.${it.talla}</span>
+      <input type="number" value="${it.cantidad}" min="1" style="width:55px;text-align:center" onchange="ocUpdateItem(${i},'cantidad',this.value)"/>
+      <input type="number" value="${it.costo_unit}" min="0" step="0.5" style="width:70px;text-align:right" placeholder="Costo" onchange="ocUpdateItem(${i},'costo_unit',this.value)"/>
+      <button onclick="ocQuitarItem(${i})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:.9rem">✕</button>
+    </div>`;
+  }).join('');
+  $('ocTotal').textContent = `S/ ${total.toFixed(0)}`;
+}
+
+async function ocConfirmarOrden(){
+  if(!_ocItems.length){ toast('Agrega al menos un producto','error'); return; }
+  const res = await api('/api/orden_compra','POST',{
+    proveedor:      $('ocProveedor').value.trim(),
+    forma_pago:     $('ocFormaPago').value,
+    fecha_esperada: $('ocFechaEsperada').value,
+    notas:          $('ocNotas').value.trim(),
+    items:          _ocItems
+  });
+  if(res.error){ toast(res.error,'error'); return; }
+  closeModal('modalNuevaOC');
+  toast(`✅ Orden #${res.orden_id} creada · S/${res.monto_total.toFixed(0)}`);
+  loadOC();
+}
+
+/* ── DEVOLUCIONES ── */
+let _devGrupoId  = null;
+let _devItems    = [];
+let _devChecked  = new Set();
+
+async function abrirDevolucion(grupoId){
+  _devGrupoId = grupoId;
+  _devChecked = new Set();
+
+  // Cargar items de la venta
+  const grupos = await api(`/api/ventas_grupos?grupo_id=${grupoId}`);
+  // Buscar el grupo en el historial actual
+  const res = await api(`/api/ventas_grupos?desde=2020-01-01&training=0`);
+  const grupo = res && Array.isArray(res) ? null : res; // fallback
+
+  // Usar los items del DOM que ya tenemos
+  const card = document.querySelector(`[data-grupo-id="${grupoId}"]`);
+
+  // Cargar venta directo
+  const vg = await api(`/api/ventas_grupos_detalle/${grupoId}`);
+  if(!vg || vg.error){
+    // Usar lo que tenemos del historial
+    toast('Cargando detalles...', 'ok');
+  }
+
+  $('devMotivo').value = '';
+  $('devNotas').value  = '';
+  $('devTipo').value   = 'devolucion';
+
+  // Mostrar info de la venta
+  $('devVentaInfo').innerHTML = `<strong>Venta #${grupoId}</strong> · Los productos devueltos volverán al inventario automáticamente.`;
+
+  // Cargar items desde el historial (ya los tenemos en memoria)
+  _devItems = [];
+  // Reconstruir desde ventas_grupos API
+  const allVentas = await api('/api/ventas_grupos?training=0&desde=2020-01-01');
+  if(Array.isArray(allVentas)){
+    const g = allVentas.find(x=>x.grupo_id===grupoId||x.key===String(grupoId));
+    if(g && g.items){
+      _devItems = g.items.map(i=>({
+        producto_id: i.producto_id,
+        nombre: i.nombre_display||i.nombre,
+        color: i.color,
+        talla: i.talla,
+        precio: i.precio,
+        cantidad: i.cantidad,
+        checked: true
+      }));
+    }
+  }
+
+  renderDevItems();
+  openModal('modalDevolucion');
+}
+
+function renderDevItems(){
+  if(!_devItems.length){
+    $('devItemsList').innerHTML='<p style="color:var(--gray);font-size:.82rem">No se pudieron cargar los productos. Ingresa los datos manualmente.</p>';
+    $('devMontoTotal').textContent='S/ 0';
+    return;
+  }
+
+  let total = 0;
+  $('devItemsList').innerHTML = _devItems.map((it,i)=>{
+    const checked = _devChecked.has(i)||it.checked;
+    if(checked) total += it.precio * it.cantidad;
+    return `<div style="display:flex;align-items:center;gap:.5rem;padding:.4rem .5rem;background:var(--card);border-radius:6px;margin-bottom:.35rem;font-size:.82rem">
+      <input type="checkbox" ${checked?'checked':''} onchange="devToggleItem(${i},this.checked)" style="width:16px;height:16px;cursor:pointer"/>
+      <span style="flex:1">${it.nombre} ${it.color} — T.${it.talla}</span>
+      <span style="color:var(--gray)">x${it.cantidad}</span>
+      <span style="font-weight:700">S/${(it.precio*it.cantidad).toFixed(0)}</span>
+    </div>`;
+  }).join('');
+  $('devMontoTotal').textContent = `S/ ${total.toFixed(0)}`;
+}
+
+function devToggleItem(idx, checked){
+  _devItems[idx].checked = checked;
+  let total = _devItems.reduce((s,it)=>s+(it.checked?it.precio*it.cantidad:0),0);
+  $('devMontoTotal').textContent = `S/ ${total.toFixed(0)}`;
+}
+
+async function confirmarDevolucion(){
+  const motivo = $('devMotivo').value;
+  if(!motivo){ toast('Selecciona un motivo','error'); return; }
+
+  const itemsADevolver = _devItems
+    .filter(it=>it.checked)
+    .map(it=>({producto_id:it.producto_id, cantidad:it.cantidad, precio:it.precio}));
+
+  if(!itemsADevolver.length){ toast('Selecciona al menos un producto','error'); return; }
+
+  const res = await api('/api/devolucion','POST',{
+    grupo_id: _devGrupoId,
+    motivo,
+    tipo: $('devTipo').value,
+    notas: $('devNotas').value,
+    items: itemsADevolver
+  });
+
+  if(res.error){ toast(res.error,'error'); return; }
+
+  closeModal('modalDevolucion');
+  toast(`↩ Devolución registrada · S/${res.monto} · Stock actualizado`);
+  loadHistorial();
+}
+
 /* ── DESPACHOS / RECOLECCIÓN ── */
 let recoleccionId = null;
 
@@ -3548,19 +4084,29 @@ async function loadDespachos(){
     const pct = d.total_items ? Math.round(d.total_items ? d.total_escaneado/d.total_items*100 : 0) : 0;
     const estadoColor = {LISTO:'var(--ok)','EN RECOLECCIÓN':'var(--red)',ENVIADO:'var(--gray)'}[d.estado]||'var(--gray)';
     const cls = d.estado==='LISTO'?' listo':d.estado==='EN RECOLECCIÓN'?' recoleccion':'';
+    const courierIcon = {'Dinsides':'🏍','Olva':'📦','Shalom':'📫'}[d.courier]||'🚚';
+    const courierInfo = d.courier ? `${courierIcon} ${d.courier}${d.distrito?' · '+d.distrito:''}` : '';
+    const pagoInfo = d.tipo_pago ? `💳 ${d.tipo_pago}` : '';
+    const entregaInfo = d.fecha_entrega ? `📅 Entrega: ${d.fecha_entrega}` : '';
+    const esOlvaShalom = ['Olva','Shalom'].includes(d.courier);
+    const esDinsides = d.courier === 'Dinsides';
+
     return `<div class="despacho-card${cls}">
       <div class="desp-info">
-        <div class="desp-nombre">${d.nombre_cliente}</div>
+        <div class="desp-nombre">${d.nombre_cliente}${d.telefono?` · 📱${d.telefono}`:''}</div>
         <div class="desp-meta">${d.canal}${d.referencia?' · '+d.referencia:''} · ${d.fecha.substring(0,16)}</div>
+        ${courierInfo?`<div class="desp-courier-tag">${courierInfo}${pagoInfo?' · '+pagoInfo:''}${entregaInfo?' · '+entregaInfo:''}</div>`:''}
         ${d.total_items?`<div class="prog-bar" style="margin-top:.4rem;width:160px"><div class="prog-fill" style="width:${pct}%"></div></div>`:''}
       </div>
       <div style="font-size:.72rem;color:${estadoColor};font-weight:800">${d.estado}</div>
       <div style="font-size:.8rem;color:var(--gray)">${d.total_escaneado}/${d.total_items} items</div>
-      <div style="display:flex;gap:.3rem">
+      <div style="display:flex;gap:.3rem;flex-wrap:wrap">
         ${d.estado!=='ENVIADO'&&d.estado!=='CANCELADO'?`
         <button class="btn btn-primary btn-sm" onclick="iniciarRecoleccion(${d.id})">
           ${d.estado==='LISTO'?'✓ Ver':'📦 Recolectar'}
         </button>`:''}
+        ${d.estado==='LISTO'&&esDinsides?`<button class="btn btn-outline btn-sm" onclick="imprimirEtiquetaDinsides(${d.id})" title="Imprimir etiqueta 54x54mm">🏷 Etiqueta</button>`:''}
+        ${d.estado==='LISTO'&&esOlvaShalom?`<button class="btn btn-outline btn-sm" onclick="imprimirEtiquetaA4(${d.id},'${d.courier}')" title="Imprimir guía A4">🖨 Guía</button>`:''}
         ${d.estado==='LISTO'?`<button class="btn btn-ok btn-sm" onclick="marcarEnviado(${d.id})">✈ Enviado</button>`:''}
         ${d.estado==='PENDIENTE'?`<button class="btn btn-outline btn-sm" style="color:var(--red)" onclick="cancelarDespacho(${d.id})">✕</button>`:''}
       </div>
@@ -3589,6 +4135,72 @@ function renderDspItems(){
         <button class="btn btn-outline btn-sm" style="padding:.15rem .5rem;color:var(--red)" onclick="dspItems.splice(${i},1);renderDspItems()">×</button>
       </div>`).join('')
     : '<p style="font-size:.78rem;color:var(--gray)">Sin items — agrega productos arriba</p>';
+}
+
+async function imprimirEtiquetaDinsides(did){
+  const data = await api(`/api/despacho/${did}`);
+  if(!data || data.error){ toast('Error al cargar despacho','error'); return; }
+  const d = data.despacho;
+  const productos = data.items.map(i=>`${i.nombre} ${i.color} T.${i.talla} x${i.cantidad}`).join('\n');
+  // Genera ventana de impresion para etiqueta 54x54mm (Gprinter)
+  const w = window.open('','_blank','width=300,height=300');
+  w.document.write(`<!DOCTYPE html><html><head><style>
+    @page{size:54mm 54mm;margin:2mm}
+    body{font-family:Arial,sans-serif;font-size:8pt;margin:0;padding:2mm}
+    .titulo{font-weight:bold;font-size:9pt;border-bottom:1px solid #000;margin-bottom:2mm;padding-bottom:1mm}
+    .linea{margin:1mm 0;font-size:7.5pt}
+    .courier{font-weight:bold;font-size:8pt;margin-top:2mm;border-top:1px solid #000;padding-top:1mm}
+  </style></head><body onload="window.print();window.close()">
+    <div class="titulo">DRSK PERU</div>
+    <div class="linea"><b>${d.nombre_cliente}</b></div>
+    ${d.telefono?`<div class="linea">📱 ${d.telefono}</div>`:''}
+    ${d.distrito?`<div class="linea">📍 ${d.distrito}</div>`:''}
+    ${d.direccion?`<div class="linea">${d.direccion}</div>`:''}
+    <div class="linea" style="font-size:7pt;color:#555">${productos.replace(/\n/g,'<br>')}</div>
+    <div class="courier">🏍 DINSIDES${d.tipo_pago?` · ${d.tipo_pago}`:''}</div>
+  </body></html>`);
+}
+
+async function imprimirEtiquetaA4(did, courier){
+  const data = await api(`/api/despacho/${did}`);
+  if(!data || data.error){ toast('Error al cargar despacho','error'); return; }
+  const d = data.despacho;
+  const productos = data.items.map(i=>`• ${i.nombre} ${i.color} — Talla ${i.talla} × ${i.cantidad}`).join('<br>');
+  const w = window.open('','_blank','width=800,height=600');
+  w.document.write(`<!DOCTYPE html><html><head><style>
+    @page{size:A4;margin:15mm}
+    body{font-family:Arial,sans-serif;font-size:11pt;margin:0}
+    .header{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #000;padding-bottom:5mm;margin-bottom:5mm}
+    .logo{font-size:18pt;font-weight:bold}
+    .courier-badge{background:#000;color:#fff;padding:4px 12px;border-radius:4px;font-size:12pt;font-weight:bold}
+    .section{margin-bottom:5mm}
+    .label{font-size:8pt;color:#666;text-transform:uppercase;margin-bottom:1mm}
+    .value{font-size:12pt;font-weight:bold}
+    .productos{background:#f5f5f5;padding:5mm;border-radius:4px;font-size:10pt}
+    .footer{margin-top:8mm;font-size:8pt;color:#999;text-align:center;border-top:1px solid #ccc;padding-top:3mm}
+  </style></head><body onload="window.print();window.close()">
+    <div class="header">
+      <div class="logo">DRSK PERU</div>
+      <div class="courier-badge">${courier.toUpperCase()}</div>
+    </div>
+    <div class="section">
+      <div class="label">Destinatario</div>
+      <div class="value">${d.nombre_cliente}</div>
+      ${d.telefono?`<div>${d.telefono}</div>`:''}
+    </div>
+    <div class="section">
+      <div class="label">Dirección de entrega</div>
+      <div class="value">${d.distrito||''}${d.ciudad&&d.ciudad!=='Lima'?', '+d.ciudad:''}</div>
+      ${d.direccion?`<div>${d.direccion}</div>`:''}
+    </div>
+    ${d.fecha_entrega?`<div class="section"><div class="label">Fecha de entrega</div><div class="value">${d.fecha_entrega}</div></div>`:''}
+    ${d.tipo_pago?`<div class="section"><div class="label">Método de pago</div><div class="value">${d.tipo_pago}</div></div>`:''}
+    <div class="section">
+      <div class="label">Productos</div>
+      <div class="productos">${productos}</div>
+    </div>
+    <div class="footer">DRSK PERU · Stay Positive. Peruvian Streetwear.</div>
+  </body></html>`);
 }
 
 async function crearDespacho(){
@@ -3709,14 +4321,132 @@ async function cancelarDespacho(did){
 
 /* ── DASHBOARD ── */
 let chartVentas = null;
+let _dashData   = null;
+let _dashTab    = 'ventas';
 
-async function loadDashboard(){
-  const d = await api('/api/dashboard');
+function dashSetTab(tab){
+  _dashTab = tab;
+  ['ventas','inventario','despachos','gastos'].forEach(t=>{
+    $(`dashTab-${t}-content`).style.display = t===tab ? 'block' : 'none';
+    const btn = $(`dashTab-${t}`);
+    if(btn){ btn.className = t===tab ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm'; }
+  });
+}
+
+function dashSetPeriodo(p){
+  ['semana','mes','todo'].forEach(x=>{
+    const b=$(`dashPer-${x}`);
+    if(b) b.className = x===p ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm';
+  });
+  if(_dashData) renderDashVentas(_dashData, p);
+}
+
+function renderDashVentas(d, periodo='mes'){
+  // KPIs
+  const esHoy   = periodo==='semana';
+  const ventasN = esHoy ? d.ventas_sem_n : d.ventas_mes_n;
+  const ventasS = esHoy ? d.ventas_sem_s : d.ventas_mes_s;
+  const tickN   = esHoy ? d.ventas_hoy_n : d.tickets_mes_n;
+  const tickS   = esHoy ? d.ventas_hoy_s : d.tickets_mes_s;
+  const label   = esHoy ? 'esta semana' : periodo==='mes' ? 'este mes' : 'total';
+
   $('statsGrid').innerHTML=`
     <div class="stat-card stat-ok">
-      <div class="label">SKUs totales</div>
+      <div class="label">Ventas ${label}</div>
+      <div class="value">${ventasN}</div>
+      <div class="sub">S/ ${ventasS.toLocaleString()} recaudado</div>
+    </div>
+    <div class="stat-card stat-ok">
+      <div class="label">Tickets hoy</div>
+      <div class="value">${d.ventas_hoy_n}</div>
+      <div class="sub">S/ ${d.ventas_hoy_s.toLocaleString()}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Ticket promedio</div>
+      <div class="value">S/ ${d.tickets_mes_n>0?Math.round(d.tickets_mes_s/d.tickets_mes_n):0}</div>
+      <div class="sub">${d.tickets_mes_n} pedidos este mes</div>
+    </div>
+    <div class="stat-card stat-bajo">
+      <div class="label">Despachos pendientes</div>
+      <div class="value">${d.desp_pendiente + d.desp_recoleccion}</div>
+      <div class="sub">${d.desp_listo} listos para enviar</div>
+    </div>`;
+
+  // Canales
+  if(d.canales_mes && d.canales_mes.length){
+    const maxC = Math.max(...d.canales_mes.map(c=>c.total));
+    $('dashCanales').innerHTML = d.canales_mes.map(c=>`
+      <div style="margin-bottom:.6rem">
+        <div style="display:flex;justify-content:space-between;font-size:.82rem;margin-bottom:.2rem">
+          <span style="font-weight:600">${c.canal}</span>
+          <span>S/ ${c.total.toLocaleString()} · ${c.n} ventas</span>
+        </div>
+        <div style="background:var(--border);border-radius:4px;height:8px">
+          <div style="background:var(--accent);height:8px;border-radius:4px;width:${Math.round(c.total/maxC*100)}%"></div>
+        </div>
+      </div>`).join('');
+  } else {
+    $('dashCanales').innerHTML='<p style="color:var(--gray);font-size:.82rem">Sin ventas este mes</p>';
+  }
+
+  // Top productos
+  if(d.top_productos && d.top_productos.length){
+    $('dashTopProductos').innerHTML = `<table style="width:100%;font-size:.82rem;border-collapse:collapse">
+      <thead><tr style="color:var(--gray);font-size:.72rem">
+        <th style="text-align:left;padding:.3rem 0">Producto</th>
+        <th style="text-align:center">Talla</th>
+        <th style="text-align:right">Uds</th>
+        <th style="text-align:right">Total</th>
+      </tr></thead><tbody>
+      ${d.top_productos.map((p,i)=>`<tr style="border-top:1px solid var(--border)">
+        <td style="padding:.4rem 0"><span style="color:var(--accent);font-weight:700;margin-right:.4rem">#${i+1}</span>${p.nombre} ${p.color}</td>
+        <td style="text-align:center">${p.talla}</td>
+        <td style="text-align:right;font-weight:700">${p.cnt}</td>
+        <td style="text-align:right">S/ ${p.total}</td>
+      </tr>`).join('')}
+      </tbody></table>`;
+  } else {
+    $('dashTopProductos').innerHTML='<p style="color:var(--gray);font-size:.82rem">Sin datos este mes</p>';
+  }
+
+  // Top distritos
+  if(d.top_distritos && d.top_distritos.length){
+    const maxD = Math.max(...d.top_distritos.map(x=>x.n));
+    $('dashTopDistritos').innerHTML = d.top_distritos.map(x=>`
+      <div style="margin-bottom:.5rem;display:flex;align-items:center;gap:.75rem">
+        <span style="min-width:140px;font-size:.82rem;font-weight:600">📍 ${x.distrito}</span>
+        <div style="flex:1;background:var(--border);border-radius:4px;height:7px">
+          <div style="background:#3b82f6;height:7px;border-radius:4px;width:${Math.round(x.n/maxD*100)}%"></div>
+        </div>
+        <span style="font-size:.78rem;color:var(--gray)">${x.n} pedidos · S/${x.total}</span>
+      </div>`).join('');
+  } else {
+    if($('dashTopDistritos')) $('dashTopDistritos').innerHTML='<p style="color:var(--gray);font-size:.82rem">Sin datos de distritos</p>';
+  }
+
+  // Métodos de pago
+  if(d.metodos_pago && d.metodos_pago.length){
+    const icons = {Yape:'💜',Plin:'💚',Efectivo:'💵',Tarjeta:'💳','Pago Marketplace':'🏪'};
+    $('dashMetodosPago').innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:.5rem">
+      ${d.metodos_pago.map(m=>`
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:.5rem .75rem;text-align:center;min-width:100px">
+          <div style="font-size:1.1rem">${icons[m.metodo]||'💰'}</div>
+          <div style="font-size:.78rem;font-weight:700;margin:.2rem 0">${m.metodo}</div>
+          <div style="font-size:.72rem;color:var(--gray)">${m.n} ventas</div>
+          <div style="font-size:.8rem;color:var(--ok);font-weight:700">S/${m.total}</div>
+        </div>`).join('')}
+    </div>`;
+  } else {
+    if($('dashMetodosPago')) $('dashMetodosPago').innerHTML='<p style="color:var(--gray);font-size:.82rem">Sin datos</p>';
+  }
+}
+
+function renderDashInventario(d){
+  $('statsGridInv').innerHTML=`
+    <div class="stat-card">
+      <div class="label">SKUs en sistema</div>
       <div class="value">${d.total_skus}</div>
-      <div class="sub">productos en sistema</div>
+      <div class="sub">${d.con_stock} con stock</div>
     </div>
     <div class="stat-card stat-bajo">
       <div class="label">Bajo stock</div>
@@ -3728,21 +4458,49 @@ async function loadDashboard(){
       <div class="value">${d.agotados}</div>
       <div class="sub">sin stock</div>
     </div>
-    <div class="stat-card stat-ok">
-      <div class="label">Ventas hoy</div>
-      <div class="value">${d.ventas_hoy_n}</div>
-      <div class="sub">S/ ${d.ventas_hoy_s} recaudado</div>
-    </div>
-    <div class="stat-card stat-ok">
-      <div class="label">Ventas este mes</div>
-      <div class="value">${d.ventas_mes_n}</div>
-      <div class="sub">S/ ${d.ventas_mes_s} recaudado</div>
-    </div>
     <div class="stat-card">
       <div class="label">Valor inventario</div>
-      <div class="value" style="font-size:1.4rem">S/ ${d.valor_inv.toLocaleString()}</div>
+      <div class="value" style="font-size:1.3rem">S/ ${Math.round(d.valor_inv).toLocaleString()}</div>
       <div class="sub">a precio de venta</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Costo inventario</div>
+      <div class="value" style="font-size:1.3rem">S/ ${Math.round(d.costo_inv).toLocaleString()}</div>
+      <div class="sub">precio de costo</div>
+    </div>
+    <div class="stat-card stat-ok">
+      <div class="label">Margen potencial</div>
+      <div class="value" style="font-size:1.3rem">S/ ${Math.round(d.margen_inv).toLocaleString()}</div>
+      <div class="sub">si se vende todo</div>
     </div>`;
+}
+
+function renderDashDespachos(d){
+  $('statsGridDesp').innerHTML=`
+    <div class="stat-card">
+      <div class="label">Pendientes</div>
+      <div class="value">${d.desp_pendiente}</div>
+      <div class="sub">por procesar</div>
+    </div>
+    <div class="stat-card stat-bajo">
+      <div class="label">En recolección</div>
+      <div class="value">${d.desp_recoleccion}</div>
+      <div class="sub">en proceso</div>
+    </div>
+    <div class="stat-card stat-ok">
+      <div class="label">Listos para enviar</div>
+      <div class="value">${d.desp_listo}</div>
+      <div class="sub">armados y sellados</div>
+    </div>`;
+}
+
+async function loadDashboard(){
+  const d = await api('/api/dashboard');
+  _dashData = d;
+
+  renderDashVentas(d, 'mes');
+  renderDashInventario(d);
+  renderDashDespachos(d);
 
   const rawMes = await api('/api/ventas/por_mes');
   renderChartVentas(rawMes);
@@ -3751,19 +4509,17 @@ async function loadDashboard(){
   const gastos = await api('/api/gastos');
   renderGastos(gastos);
 
-  // Alertas
+  // Alertas en tab inventario
   const alertas = await api('/api/productos?status=agotado');
   const bajos   = await api('/api/productos?status=bajo');
   let html='';
   if(alertas.length){
     html+=`<h3 style="color:var(--agotado);margin:1.5rem 0 .75rem;font-size:.85rem;letter-spacing:1px">🔴 AGOTADOS (${alertas.length})</h3>`;
-    html+=alertas.slice(0,15).map(p=>`<div style="padding:.4rem 0;font-size:.82rem;color:var(--gray);border-bottom:1px solid var(--border)">
-      ${_nombreProd(p)} — ${p.color}</div>`).join('');
+    html+=alertas.slice(0,15).map(p=>`<div style="padding:.4rem 0;font-size:.82rem;color:var(--gray);border-bottom:1px solid var(--border)">${_nombreProd(p)} — ${p.color}</div>`).join('');
   }
   if(bajos.length){
     html+=`<h3 style="color:var(--bajo);margin:1.5rem 0 .75rem;font-size:.85rem;letter-spacing:1px">🟡 BAJO STOCK (${bajos.length})</h3>`;
-    html+=bajos.slice(0,15).map(p=>`<div style="padding:.4rem 0;font-size:.82rem;color:var(--gray);border-bottom:1px solid var(--border)">
-      ${_nombreProd(p)} — ${p.color} (${p.stock_total} uds)</div>`).join('');
+    html+=bajos.slice(0,15).map(p=>`<div style="padding:.4rem 0;font-size:.82rem;color:var(--gray);border-bottom:1px solid var(--border)">${_nombreProd(p)} — ${p.color} (${p.stock_total} uds)</div>`).join('');
   }
   $('alertasLista').innerHTML=html;
 }
@@ -4438,5 +5194,57 @@ async function init(){
 
 init();
 </script>{% endraw %}
+
+<!-- ══ MODAL DEVOLUCIÓN ══ -->
+<div class="modal-overlay" id="modalDevolucion">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header">
+      <div class="modal-title">↩ DEVOLUCIÓN / CAMBIO</div>
+      <button class="modal-close" onclick="closeModal('modalDevolucion')">×</button>
+    </div>
+    <div style="padding:1rem">
+      <div id="devVentaInfo" style="background:var(--card);border-radius:8px;padding:.75rem;margin-bottom:1rem;font-size:.82rem"></div>
+
+      <div class="form-group">
+        <label>Tipo</label>
+        <select id="devTipo">
+          <option value="devolucion">Devolución — cliente devuelve el producto</option>
+          <option value="cambio">Cambio — quiere otro producto/talla</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Motivo *</label>
+        <select id="devMotivo">
+          <option value="">— Selecciona motivo —</option>
+          <option value="Talla incorrecta">Talla incorrecta</option>
+          <option value="Producto defectuoso">Producto defectuoso</option>
+          <option value="No le gustó">No le gustó</option>
+          <option value="Llegó tarde">Llegó tarde</option>
+          <option value="Producto incorrecto">Producto incorrecto enviado</option>
+          <option value="Otro">Otro</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Notas adicionales</label>
+        <textarea id="devNotas" placeholder="Detalles adicionales..." style="height:70px"></textarea>
+      </div>
+
+      <div style="font-size:.72rem;font-weight:800;letter-spacing:1px;color:var(--gray);margin-bottom:.5rem">PRODUCTOS A DEVOLVER</div>
+      <div id="devItemsList"></div>
+
+      <div style="background:var(--card);border-radius:8px;padding:.75rem;margin-top:.75rem;display:flex;justify-content:space-between">
+        <span style="font-size:.85rem;font-weight:600">Monto a devolver:</span>
+        <span id="devMontoTotal" style="font-size:.95rem;font-weight:800;color:var(--accent)">S/ 0</span>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modalDevolucion')">Cancelar</button>
+      <button class="btn btn-primary" style="background:var(--bajo);border-color:var(--bajo)" onclick="confirmarDevolucion()">↩ Confirmar Devolución</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
